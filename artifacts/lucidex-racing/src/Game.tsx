@@ -53,88 +53,416 @@ interface SharedRefs {
   onCrash: () => void;
 }
 
-// ---------- Engine audio (synthesized) ----------
-function useEngineAudio(speedRef: React.MutableRefObject<number>, active: boolean) {
-  const ctxRef = useRef<AudioContext | null>(null);
-  const oscRef = useRef<OscillatorNode | null>(null);
-  const subOscRef = useRef<OscillatorNode | null>(null);
-  const gainRef = useRef<GainNode | null>(null);
+// ---------- Audio system (synthesized, no external files) ----------
+// Builds a single AudioContext with layered engine, wind, drift screech,
+// nitro whoosh, crash boom, and UI click sounds.
+
+interface AudioApi {
+  resume: () => void;
+  setEngine: (speed: number, boosting: boolean, drifting: boolean) => void;
+  setEngineActive: (on: boolean) => void;
+  triggerNitro: () => void;
+  triggerCrash: () => void;
+  triggerClick: () => void;
+  triggerStart: () => void;
+  setMuted: (m: boolean) => void;
+  isMuted: () => boolean;
+}
+
+function buildWhiteNoiseBuffer(ctx: AudioContext, seconds = 2) {
+  const sampleRate = ctx.sampleRate;
+  const length = sampleRate * seconds;
+  const buffer = ctx.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+  return buffer;
+}
+
+function createAudio(): AudioApi {
+  const AC =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext })
+      .webkitAudioContext;
+  const ctx = new AC();
+  const master = ctx.createGain();
+  master.gain.value = 0.85;
+  master.connect(ctx.destination);
+
+  let muted = false;
+
+  // ---- Engine: 4 layered oscillators + LFO modulation ----
+  const engineGain = ctx.createGain();
+  engineGain.gain.value = 0;
+  // Lowpass to keep it warm
+  const engineFilter = ctx.createBiquadFilter();
+  engineFilter.type = "lowpass";
+  engineFilter.frequency.value = 1800;
+  engineFilter.Q.value = 0.6;
+  engineGain.connect(engineFilter);
+  engineFilter.connect(master);
+
+  const oscSub = ctx.createOscillator();
+  oscSub.type = "sawtooth";
+  oscSub.frequency.value = 45;
+  const subGain = ctx.createGain();
+  subGain.gain.value = 0.55;
+  oscSub.connect(subGain);
+  subGain.connect(engineGain);
+  oscSub.start();
+
+  const oscMain = ctx.createOscillator();
+  oscMain.type = "sawtooth";
+  oscMain.frequency.value = 90;
+  const mainGain = ctx.createGain();
+  mainGain.gain.value = 0.5;
+  oscMain.connect(mainGain);
+  mainGain.connect(engineGain);
+  oscMain.start();
+
+  const oscHigh = ctx.createOscillator();
+  oscHigh.type = "square";
+  oscHigh.frequency.value = 180;
+  const highGain = ctx.createGain();
+  highGain.gain.value = 0.18;
+  oscHigh.connect(highGain);
+  highGain.connect(engineGain);
+  oscHigh.start();
+
+  const oscRoar = ctx.createOscillator();
+  oscRoar.type = "triangle";
+  oscRoar.frequency.value = 60;
+  const roarGain = ctx.createGain();
+  roarGain.gain.value = 0.35;
+  oscRoar.connect(roarGain);
+  roarGain.connect(engineGain);
+  oscRoar.start();
+
+  // LFO that modulates main osc frequency for revvy grit
+  const lfo = ctx.createOscillator();
+  lfo.type = "sine";
+  lfo.frequency.value = 18;
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = 6;
+  lfo.connect(lfoGain);
+  lfoGain.connect(oscMain.frequency);
+  lfo.start();
+
+  // ---- Engine grit: bandpassed noise mixed in ----
+  const noiseBuffer = buildWhiteNoiseBuffer(ctx, 3);
+  const engineNoise = ctx.createBufferSource();
+  engineNoise.buffer = noiseBuffer;
+  engineNoise.loop = true;
+  const engineNoiseFilter = ctx.createBiquadFilter();
+  engineNoiseFilter.type = "bandpass";
+  engineNoiseFilter.frequency.value = 350;
+  engineNoiseFilter.Q.value = 1.4;
+  const engineNoiseGain = ctx.createGain();
+  engineNoiseGain.gain.value = 0.0;
+  engineNoise.connect(engineNoiseFilter);
+  engineNoiseFilter.connect(engineNoiseGain);
+  engineNoiseGain.connect(engineGain);
+  engineNoise.start();
+
+  // ---- Wind whoosh: speed-driven filtered noise ----
+  const windSrc = ctx.createBufferSource();
+  windSrc.buffer = noiseBuffer;
+  windSrc.loop = true;
+  const windFilter = ctx.createBiquadFilter();
+  windFilter.type = "lowpass";
+  windFilter.frequency.value = 600;
+  windFilter.Q.value = 0.4;
+  const windGain = ctx.createGain();
+  windGain.gain.value = 0.0;
+  windSrc.connect(windFilter);
+  windFilter.connect(windGain);
+  windGain.connect(master);
+  windSrc.start();
+
+  // ---- Drift screech: bandpass noise w/ resonance ----
+  const driftSrc = ctx.createBufferSource();
+  driftSrc.buffer = noiseBuffer;
+  driftSrc.loop = true;
+  const driftFilter = ctx.createBiquadFilter();
+  driftFilter.type = "bandpass";
+  driftFilter.frequency.value = 2400;
+  driftFilter.Q.value = 8;
+  const driftGain = ctx.createGain();
+  driftGain.gain.value = 0.0;
+  driftSrc.connect(driftFilter);
+  driftFilter.connect(driftGain);
+  driftGain.connect(master);
+  driftSrc.start();
+
+  let active = false;
+
+  const setEngineActive = (on: boolean) => {
+    active = on;
+    if (!on) {
+      const t = ctx.currentTime;
+      engineGain.gain.setTargetAtTime(0, t, 0.1);
+      windGain.gain.setTargetAtTime(0, t, 0.1);
+      driftGain.gain.setTargetAtTime(0, t, 0.05);
+    }
+  };
+
+  const setEngine = (speed: number, boosting: boolean, drifting: boolean) => {
+    if (!active || muted) return;
+    const t = Math.min(1, Math.max(0, speed / NITRO_MAX_SPEED));
+    const baseFreq = 65 + t * 360 + (boosting ? 60 : 0);
+    const time = ctx.currentTime;
+    oscMain.frequency.setTargetAtTime(baseFreq, time, 0.05);
+    oscHigh.frequency.setTargetAtTime(baseFreq * 2, time, 0.05);
+    oscSub.frequency.setTargetAtTime(baseFreq * 0.5, time, 0.05);
+    oscRoar.frequency.setTargetAtTime(baseFreq * 0.75, time, 0.08);
+    engineNoiseFilter.frequency.setTargetAtTime(
+      300 + t * 1400,
+      time,
+      0.08,
+    );
+    engineNoiseGain.gain.setTargetAtTime(
+      0.04 + t * 0.08 + (boosting ? 0.04 : 0),
+      time,
+      0.1,
+    );
+    engineFilter.frequency.setTargetAtTime(
+      900 + t * 2400 + (boosting ? 800 : 0),
+      time,
+      0.08,
+    );
+    lfo.frequency.setTargetAtTime(14 + t * 26, time, 0.1);
+    engineGain.gain.setTargetAtTime(
+      0.18 + t * 0.18 + (boosting ? 0.05 : 0),
+      time,
+      0.1,
+    );
+    // Wind scales harder with speed
+    windFilter.frequency.setTargetAtTime(400 + t * 3200, time, 0.1);
+    windGain.gain.setTargetAtTime(0.04 + t * 0.18, time, 0.12);
+    // Drift screech only when drifting
+    driftGain.gain.setTargetAtTime(drifting ? 0.18 : 0, time, drifting ? 0.04 : 0.08);
+    driftFilter.frequency.setTargetAtTime(
+      2200 + (drifting ? Math.random() * 600 : 0),
+      time,
+      0.05,
+    );
+  };
+
+  const triggerNitro = () => {
+    if (muted) return;
+    const t = ctx.currentTime;
+    // Whoosh: filtered noise burst
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer;
+    const filt = ctx.createBiquadFilter();
+    filt.type = "lowpass";
+    filt.frequency.setValueAtTime(200, t);
+    filt.frequency.exponentialRampToValueAtTime(4000, t + 0.4);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.5, t + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+    src.connect(filt);
+    filt.connect(g);
+    g.connect(master);
+    src.start(t);
+    src.stop(t + 0.75);
+
+    // Bass thump
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(120, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.4);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0, t);
+    og.gain.linearRampToValueAtTime(0.6, t + 0.03);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    o.connect(og);
+    og.connect(master);
+    o.start(t);
+    o.stop(t + 0.55);
+  };
+
+  const triggerCrash = () => {
+    if (muted) return;
+    const t = ctx.currentTime;
+    // Big noise burst
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer;
+    const filt = ctx.createBiquadFilter();
+    filt.type = "lowpass";
+    filt.frequency.setValueAtTime(2200, t);
+    filt.frequency.exponentialRampToValueAtTime(180, t + 0.9);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.85, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+    src.connect(filt);
+    filt.connect(g);
+    g.connect(master);
+    src.start(t);
+    src.stop(t + 1.5);
+
+    // Sub rumble
+    const sub = ctx.createOscillator();
+    sub.type = "sine";
+    sub.frequency.setValueAtTime(80, t);
+    sub.frequency.exponentialRampToValueAtTime(35, t + 1.2);
+    const sg = ctx.createGain();
+    sg.gain.setValueAtTime(0, t);
+    sg.gain.linearRampToValueAtTime(0.7, t + 0.04);
+    sg.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+    sub.connect(sg);
+    sg.connect(master);
+    sub.start(t);
+    sub.stop(t + 1.5);
+
+    // Metallic clang (bandpass noise, short)
+    const clang = ctx.createBufferSource();
+    clang.buffer = noiseBuffer;
+    const cFilt = ctx.createBiquadFilter();
+    cFilt.type = "bandpass";
+    cFilt.frequency.value = 3200;
+    cFilt.Q.value = 6;
+    const cg = ctx.createGain();
+    cg.gain.setValueAtTime(0, t);
+    cg.gain.linearRampToValueAtTime(0.5, t + 0.005);
+    cg.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    clang.connect(cFilt);
+    cFilt.connect(cg);
+    cg.connect(master);
+    clang.start(t);
+    clang.stop(t + 0.4);
+  };
+
+  const triggerClick = () => {
+    if (muted) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = "square";
+    o.frequency.setValueAtTime(880, t);
+    o.frequency.exponentialRampToValueAtTime(1320, t + 0.07);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.18, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    o.connect(g);
+    g.connect(master);
+    o.start(t);
+    o.stop(t + 0.15);
+  };
+
+  const triggerStart = () => {
+    if (muted) return;
+    const t = ctx.currentTime;
+    // Rising synth chord — three tones
+    [440, 660, 880].forEach((f, i) => {
+      const o = ctx.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(f, t + i * 0.06);
+      o.frequency.exponentialRampToValueAtTime(f * 1.5, t + 0.5 + i * 0.06);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t + i * 0.06);
+      g.gain.linearRampToValueAtTime(0.14, t + 0.05 + i * 0.06);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.7 + i * 0.06);
+      const f1 = ctx.createBiquadFilter();
+      f1.type = "lowpass";
+      f1.frequency.value = 1800;
+      o.connect(f1);
+      f1.connect(g);
+      g.connect(master);
+      o.start(t + i * 0.06);
+      o.stop(t + 0.8 + i * 0.06);
+    });
+    // Engine ignition rev
+    const rev = ctx.createOscillator();
+    rev.type = "sawtooth";
+    rev.frequency.setValueAtTime(60, t);
+    rev.frequency.exponentialRampToValueAtTime(280, t + 0.6);
+    rev.frequency.exponentialRampToValueAtTime(120, t + 1.1);
+    const rg = ctx.createGain();
+    rg.gain.setValueAtTime(0, t);
+    rg.gain.linearRampToValueAtTime(0.3, t + 0.05);
+    rg.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+    rev.connect(rg);
+    rg.connect(master);
+    rev.start(t);
+    rev.stop(t + 1.25);
+  };
+
+  const resume = () => {
+    if (ctx.state === "suspended") void ctx.resume();
+  };
+
+  const setMuted = (m: boolean) => {
+    muted = m;
+    master.gain.setTargetAtTime(m ? 0 : 0.85, ctx.currentTime, 0.05);
+  };
+  const isMuted = () => muted;
+
+  return {
+    resume,
+    setEngine,
+    setEngineActive,
+    triggerNitro,
+    triggerCrash,
+    triggerClick,
+    triggerStart,
+    setMuted,
+    isMuted,
+  };
+}
+
+function useAudioApi(): React.MutableRefObject<AudioApi | null> {
+  const apiRef = useRef<AudioApi | null>(null);
+  useEffect(() => {
+    apiRef.current = createAudio();
+    // Restore mute preference
+    try {
+      const m = localStorage.getItem("lucidex.muted");
+      if (m === "1") apiRef.current.setMuted(true);
+    } catch {
+      /* noop */
+    }
+    // Resume context on first user gesture
+    const onGesture = () => apiRef.current?.resume();
+    window.addEventListener("pointerdown", onGesture, { passive: true });
+    window.addEventListener("keydown", onGesture);
+    window.addEventListener("touchstart", onGesture, { passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("keydown", onGesture);
+      window.removeEventListener("touchstart", onGesture);
+    };
+  }, []);
+  return apiRef;
+}
+
+// Live engine sync — runs every frame
+function useEngineSync(
+  audioRef: React.MutableRefObject<AudioApi | null>,
+  speedRef: React.MutableRefObject<number>,
+  inputRef: React.MutableRefObject<InputState>,
+  active: boolean,
+) {
+  useEffect(() => {
+    if (!audioRef.current) return;
+    audioRef.current.setEngineActive(active);
+  }, [active, audioRef]);
 
   useEffect(() => {
-    if (!active) return;
-    const AC =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext })
-        .webkitAudioContext;
-    const ctx = new AC();
-    ctxRef.current = ctx;
-
-    const gain = ctx.createGain();
-    gain.gain.value = 0.0;
-    gain.connect(ctx.destination);
-
-    const osc = ctx.createOscillator();
-    osc.type = "sawtooth";
-    osc.frequency.value = 80;
-    osc.connect(gain);
-    osc.start();
-
-    const subOsc = ctx.createOscillator();
-    subOsc.type = "square";
-    subOsc.frequency.value = 40;
-    const subGain = ctx.createGain();
-    subGain.gain.value = 0.4;
-    subOsc.connect(subGain);
-    subGain.connect(gain);
-    subOsc.start();
-
-    oscRef.current = osc;
-    subOscRef.current = subOsc;
-    gainRef.current = gain;
-
     let raf = 0;
     const tick = () => {
-      const speed = speedRef.current;
-      const t = Math.min(1, Math.max(0, speed / NITRO_MAX_SPEED));
-      const freq = 70 + t * 380;
-      if (oscRef.current && gainRef.current && ctxRef.current) {
-        oscRef.current.frequency.setTargetAtTime(
-          freq,
-          ctxRef.current.currentTime,
-          0.05,
-        );
-        if (subOscRef.current) {
-          subOscRef.current.frequency.setTargetAtTime(
-            freq * 0.5,
-            ctxRef.current.currentTime,
-            0.05,
-          );
-        }
-        gainRef.current.gain.setTargetAtTime(
-          0.06 + t * 0.1,
-          ctxRef.current.currentTime,
-          0.1,
-        );
+      const api = audioRef.current;
+      if (api && active) {
+        const boosting =
+          inputRef.current.nitro && speedRef.current > BASE_SPEED + 5;
+        api.setEngine(speedRef.current, boosting, inputRef.current.drift);
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      try {
-        oscRef.current?.stop();
-        subOscRef.current?.stop();
-        ctxRef.current?.close();
-      } catch {
-        /* noop */
-      }
-      ctxRef.current = null;
-      oscRef.current = null;
-      subOscRef.current = null;
-      gainRef.current = null;
-    };
-  }, [active, speedRef]);
+    return () => cancelAnimationFrame(raf);
+  }, [active, audioRef, speedRef, inputRef]);
 }
 
 // ---------- Player Car (primitives, cyberpunk styled) ----------
@@ -1142,6 +1470,8 @@ const HUD = ({
   onRestart,
   isMobile,
   input,
+  muted,
+  onToggleMute,
 }: {
   state: GameState;
   speedRef: React.MutableRefObject<number>;
@@ -1152,6 +1482,8 @@ const HUD = ({
   onRestart: () => void;
   isMobile: boolean;
   input: React.MutableRefObject<InputState>;
+  muted: boolean;
+  onToggleMute: () => void;
 }) => {
   const speedEl = useRef<HTMLDivElement>(null);
   const distEl = useRef<HTMLDivElement>(null);
@@ -1207,6 +1539,25 @@ const HUD = ({
 
   return (
     <div className="hud">
+      {/* Mute button — visible in all states */}
+      <button
+        type="button"
+        onClick={onToggleMute}
+        title={muted ? "Unmute" : "Mute"}
+        className="absolute top-3 right-3 z-50 glass rounded-full w-10 h-10 flex items-center justify-center pointer-events-auto"
+        style={{
+          marginTop: state === "playing" ? "70px" : "0",
+          color: muted ? "#ff5577" : "#7ff7ff",
+          textShadow: muted
+            ? "0 0 8px #ff5577"
+            : "0 0 8px #7ff7ff",
+          fontSize: "18px",
+          lineHeight: 1,
+        }}
+      >
+        {muted ? "🔇" : "🔊"}
+      </button>
+
       {/* Top bar */}
       {state === "playing" && (
         <div className="absolute top-3 left-3 right-3 flex items-start justify-between">
@@ -1471,6 +1822,7 @@ const HUD = ({
 // ---------- Main exported component ----------
 export default function Game() {
   const [state, setState] = useState<GameState>("menu");
+  const [muted, setMutedState] = useState(false);
 
   // Shared refs (mutable, no React re-renders)
   const inputRef = useRef<InputState>({ steer: 0, drift: false, nitro: false });
@@ -1482,19 +1834,34 @@ export default function Game() {
   const crashedRef = useRef(false);
   const bestRef = useRef(0);
   const topSpeedRef = useRef(0);
+  const nitroPrevRef = useRef(false);
 
-  // Track top speed during play
+  // Audio
+  const audioRef = useAudioApi();
+
+  // Track top speed + nitro press edge detection
   useEffect(() => {
     let raf = 0;
     const tick = () => {
       if (speedRef.current > topSpeedRef.current) {
         topSpeedRef.current = speedRef.current;
       }
+      // Nitro whoosh on press edge while playing & nitro available
+      const pressed = inputRef.current.nitro && nitroRef.current > 5;
+      if (
+        pressed &&
+        !nitroPrevRef.current &&
+        state === "playing" &&
+        !crashedRef.current
+      ) {
+        audioRef.current?.triggerNitro();
+      }
+      nitroPrevRef.current = pressed;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [state, audioRef]);
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(false);
@@ -1606,8 +1973,10 @@ export default function Game() {
     crashedRef.current = false;
     topSpeedRef.current = BASE_SPEED;
     inputRef.current = { steer: 0, drift: false, nitro: false };
+    audioRef.current?.resume();
+    audioRef.current?.triggerStart();
     setState("playing");
-  }, []);
+  }, [audioRef]);
 
   const restart = useCallback(() => {
     startRace();
@@ -1625,8 +1994,34 @@ export default function Game() {
         /* noop */
       }
     }
+    audioRef.current?.triggerCrash();
     setState("crashed");
-  }, []);
+  }, [audioRef]);
+
+  const toggleMute = useCallback(() => {
+    setMutedState((m) => {
+      const next = !m;
+      audioRef.current?.setMuted(next);
+      try {
+        localStorage.setItem("lucidex.muted", next ? "1" : "0");
+      } catch {
+        /* noop */
+      }
+      if (!next) audioRef.current?.triggerClick();
+      return next;
+    });
+  }, [audioRef]);
+
+  const handleStartClick = useCallback(() => {
+    audioRef.current?.resume();
+    audioRef.current?.triggerClick();
+    startRace();
+  }, [audioRef, startRace]);
+
+  const handleRestartClick = useCallback(() => {
+    audioRef.current?.triggerClick();
+    restart();
+  }, [audioRef, restart]);
 
   // Load best
   useEffect(() => {
@@ -1639,7 +2034,7 @@ export default function Game() {
   }, []);
 
   // Engine audio
-  useEngineAudio(speedRef, state === "playing");
+  useEngineSync(audioRef, speedRef, inputRef, state === "playing");
 
   const refs: SharedRefs = {
     input: inputRef,
@@ -1675,10 +2070,12 @@ export default function Game() {
         distanceRef={distanceRef}
         nitroRef={nitroRef}
         bestRef={bestRef}
-        onStart={startRace}
-        onRestart={restart}
+        onStart={handleStartClick}
+        onRestart={handleRestartClick}
         isMobile={isMobile}
         input={inputRef}
+        muted={muted}
+        onToggleMute={toggleMute}
       />
     </div>
   );
