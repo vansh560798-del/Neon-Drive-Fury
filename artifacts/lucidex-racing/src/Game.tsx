@@ -21,7 +21,8 @@ const SEGMENT_LEN = 40; // length of each road / scenery segment
 const NUM_SEGMENTS = 12; // recycled forward
 const BUILDING_RECYCLE = 220; // distance behind camera before recycling
 const TRAFFIC_RECYCLE = 240;
-const MAX_TRAFFIC = 14;
+const MAX_TRAFFIC = 5;
+const TRAFFIC_SPAWN_INTERVAL = 1.8; // seconds between spawn attempts
 
 const BASE_SPEED = 38; // m/s minimum forward speed
 const MAX_SPEED = 95; // m/s without nitro
@@ -786,65 +787,101 @@ const TrafficCarMesh = ({
     }
   });
 
+  const color = carRef.current.color;
   return (
     <group ref={groupRef}>
-      <mesh castShadow position={[0, 0.45, 0]}>
-        <boxGeometry args={[1.6, 0.5, 3.2]} />
+      {/* Body — vivid colored so it pops against the dark road */}
+      <mesh castShadow position={[0, 0.55, 0]}>
+        <boxGeometry args={[1.8, 0.7, 3.4]} />
         <meshStandardMaterial
-          color={"#0e0e1a"}
-          metalness={0.85}
-          roughness={0.25}
+          color={color}
+          metalness={0.6}
+          roughness={0.35}
+          emissive={color}
+          emissiveIntensity={0.55}
         />
       </mesh>
-      <mesh position={[0, 0.85, -0.1]}>
-        <boxGeometry args={[1.3, 0.4, 1.3]} />
+      {/* Glowing roof beacon — visible from far away */}
+      <mesh position={[0, 1.2, 0]}>
+        <boxGeometry args={[1.4, 0.18, 1.6]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={4}
+        />
+      </mesh>
+      {/* Cockpit canopy */}
+      <mesh position={[0, 1.0, -0.1]}>
+        <boxGeometry args={[1.45, 0.4, 1.4]} />
         <meshStandardMaterial
           color={"#040810"}
           metalness={0.6}
           roughness={0.1}
+          emissive={color}
+          emissiveIntensity={0.3}
         />
       </mesh>
-      {/* Glowing accent stripe */}
-      <mesh position={[0, 0.45, 1.61]}>
-        <boxGeometry args={[1.4, 0.06, 0.04]} />
+      {/* Bright accent stripes around the body */}
+      <mesh position={[0, 0.55, 1.71]}>
+        <boxGeometry args={[1.6, 0.12, 0.05]} />
         <meshStandardMaterial
-          color={carRef.current.color}
-          emissive={carRef.current.color}
-          emissiveIntensity={3}
+          color={"#ffffff"}
+          emissive={"#ffffff"}
+          emissiveIntensity={3.5}
         />
       </mesh>
-      <mesh position={[0, 0.45, -1.61]}>
-        <boxGeometry args={[1.4, 0.06, 0.04]} />
+      <mesh position={[0, 0.55, -1.71]}>
+        <boxGeometry args={[1.6, 0.12, 0.05]} />
         <meshStandardMaterial
           color={"#ff003c"}
           emissive={"#ff003c"}
-          emissiveIntensity={2}
+          emissiveIntensity={3.5}
         />
       </mesh>
-      {/* Headlights toward player (player is +z forward; oncoming faces -z) */}
-      {[-0.5, 0.5].map((x) => (
-        <mesh key={x} position={[x, 0.5, -1.62]}>
-          <boxGeometry args={[0.3, 0.08, 0.04]} />
+      {/* Side neon trim */}
+      {[-0.91, 0.91].map((x) => (
+        <mesh key={x} position={[x, 0.55, 0]}>
+          <boxGeometry args={[0.04, 0.1, 3.2]} />
           <meshStandardMaterial
             color={"#ffffff"}
-            emissive={"#cfeaff"}
-            emissiveIntensity={5}
+            emissive={color}
+            emissiveIntensity={2.5}
+          />
+        </mesh>
+      ))}
+      {/* Headlights toward player (player is +z forward; oncoming faces -z) */}
+      {[-0.55, 0.55].map((x) => (
+        <mesh key={x} position={[x, 0.6, -1.72]}>
+          <boxGeometry args={[0.4, 0.14, 0.05]} />
+          <meshStandardMaterial
+            color={"#ffffff"}
+            emissive={"#ffffff"}
+            emissiveIntensity={6}
           />
         </mesh>
       ))}
       <pointLight
         ref={headlightRef}
-        color={"#cfeaff"}
-        intensity={1.5}
-        distance={20}
-        position={[0, 0.6, -1.7]}
+        color={color}
+        intensity={3}
+        distance={28}
+        position={[0, 1.0, 0]}
+      />
+      <spotLight
+        color={"#ffffff"}
+        position={[0, 0.7, -1.75]}
+        target-position={[0, 0, -25]}
+        angle={0.7}
+        penumbra={0.7}
+        intensity={3.5}
+        distance={35}
       />
       {/* Wheels (static) */}
       {[
-        [-0.85, 0.32, 1.0],
-        [0.85, 0.32, 1.0],
-        [-0.85, 0.32, -1.1],
-        [0.85, 0.32, -1.1],
+        [-0.95, 0.32, 1.1],
+        [0.95, 0.32, 1.1],
+        [-0.95, 0.32, -1.2],
+        [0.95, 0.32, -1.2],
       ].map(([x, y, z], i) => (
         <mesh
           key={i}
@@ -884,8 +921,7 @@ const Traffic = ({ refs }: { refs: SharedRefs }) => {
     lastSpawnRef.current += dt;
 
     // Spawn cadence
-    const interval = 0.55;
-    if (lastSpawnRef.current > interval) {
+    if (lastSpawnRef.current > TRAFFIC_SPAWN_INTERVAL) {
       lastSpawnRef.current = 0;
       const free = carsRef.current.find((c) => !c.current.alive);
       if (free) {
