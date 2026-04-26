@@ -4,6 +4,10 @@
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
 
+## Artifacts
+
+- **lucidex-racing** — Cyberpunk 3D racing game built with React + Vite + Three.js (react-three-fiber). Frontend-only, single-file game in `artifacts/lucidex-racing/src/Game.tsx`.
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces

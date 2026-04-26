@@ -1,0 +1,273 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #04030a;
+  --bg-2: #0a0820;
+  --neon-cyan: #00f6ff;
+  --neon-pink: #ff2bd1;
+  --neon-purple: #9b30ff;
+  --neon-yellow: #ffe600;
+  --neon-green: #6effaa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: #e8eaff;
+  font-family: "Orbitron", "Rajdhani", system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+@font-face {
+  font-family: "Orbitron";
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url("https://fonts.gstatic.com/s/orbitron/v34/yMJMMIlzdpvBhQQL_SC3X9yhF25-T1nyGy6BoWg1.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Rajdhani";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("https://fonts.gstatic.com/s/rajdhani/v15/LDIxapCSOBg7S-QT7q4AOeekWPrP.woff2")
+    format("woff2");
+}
+
+canvas {
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  font-family: "Orbitron", sans-serif;
+}
+
+.hud > * {
+  pointer-events: auto;
+}
+
+.neon-text {
+  text-shadow:
+    0 0 4px currentColor,
+    0 0 12px currentColor,
+    0 0 28px currentColor;
+}
+
+.neon-cyan {
+  color: var(--neon-cyan);
+}
+
+.neon-pink {
+  color: var(--neon-pink);
+}
+
+.neon-yellow {
+  color: var(--neon-yellow);
+}
+
+.neon-green {
+  color: var(--neon-green);
+}
+
+.glass {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 246, 255, 0.06),
+    rgba(155, 48, 255, 0.04)
+  );
+  backdrop-filter: blur(10px) saturate(1.4);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  border: 1px solid rgba(0, 246, 255, 0.25);
+  box-shadow:
+    inset 0 0 24px rgba(0, 246, 255, 0.08),
+    0 0 24px rgba(0, 246, 255, 0.15);
+}
+
+.scanlines::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.02) 0,
+    rgba(255, 255, 255, 0.02) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  z-index: 5;
+}
+
+.gauge-bar {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(0, 246, 255, 0.3);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.gauge-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.12s linear;
+  box-shadow: 0 0 12px currentColor;
+  background: currentColor;
+}
+
+.crt-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    rgba(0, 0, 0, 0.55) 100%
+  );
+  z-index: 6;
+}
+
+.title-glow {
+  background: linear-gradient(90deg, #00f6ff, #ff2bd1, #9b30ff, #00f6ff);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shift 8s linear infinite;
+}
+
+@keyframes shift {
+  to {
+    background-position: 300% 0;
+  }
+}
+
+@keyframes pulse-neon {
+  0%,
+  100% {
+    text-shadow:
+      0 0 6px currentColor,
+      0 0 16px currentColor,
+      0 0 32px currentColor;
+  }
+  50% {
+    text-shadow:
+      0 0 12px currentColor,
+      0 0 28px currentColor,
+      0 0 48px currentColor;
+  }
+}
+
+.pulse-neon {
+  animation: pulse-neon 2s ease-in-out infinite;
+}
+
+.touch-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(0, 246, 255, 0.18),
+    rgba(0, 246, 255, 0.04)
+  );
+  border: 2px solid rgba(0, 246, 255, 0.5);
+  color: var(--neon-cyan);
+  font-family: "Orbitron", sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  box-shadow:
+    0 0 18px rgba(0, 246, 255, 0.35),
+    inset 0 0 18px rgba(0, 246, 255, 0.2);
+  transition: transform 0.05s ease;
+}
+
+.touch-btn.pink {
+  color: var(--neon-pink);
+  border-color: rgba(255, 43, 209, 0.55);
+  box-shadow:
+    0 0 18px rgba(255, 43, 209, 0.4),
+    inset 0 0 18px rgba(255, 43, 209, 0.2);
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(255, 43, 209, 0.18),
+    rgba(255, 43, 209, 0.04)
+  );
+}
+
+.touch-btn.yellow {
+  color: var(--neon-yellow);
+  border-color: rgba(255, 230, 0, 0.55);
+  box-shadow:
+    0 0 18px rgba(255, 230, 0, 0.4),
+    inset 0 0 18px rgba(255, 230, 0, 0.2);
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(255, 230, 0, 0.18),
+    rgba(255, 230, 0, 0.04)
+  );
+}
+
+.touch-btn:active {
+  transform: scale(0.94);
+}
+
+.menu-btn {
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 14px 36px;
+  font-family: "Orbitron", sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 246, 255, 0.15),
+    rgba(255, 43, 209, 0.15)
+  );
+  color: #ffffff;
+  border: 2px solid var(--neon-cyan);
+  border-radius: 6px;
+  box-shadow:
+    0 0 24px rgba(0, 246, 255, 0.5),
+    inset 0 0 24px rgba(255, 43, 209, 0.15);
+  transition: all 0.2s ease;
+  text-shadow: 0 0 8px var(--neon-cyan);
+}
+
+.menu-btn:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 36px rgba(0, 246, 255, 0.8),
+    inset 0 0 36px rgba(255, 43, 209, 0.25);
+}

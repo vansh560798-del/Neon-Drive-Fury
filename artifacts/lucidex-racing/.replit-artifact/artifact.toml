@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Lucidex Racing"
+version = "1.0.0"
+id = "artifacts/lucidex-racing"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24197
+
+[services.development]
+run = "pnpm --filter @workspace/lucidex-racing run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/lucidex-racing", "run", "build" ]
+publicDir = "artifacts/lucidex-racing/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24197"
+BASE_PATH = "/"
