@@ -7,6 +7,13 @@ import {
   Suspense,
 } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import {
+  EffectComposer,
+  Bloom,
+  Vignette,
+  ChromaticAberration,
+} from "@react-three/postprocessing";
+import { BlendFunction } from "postprocessing";
 import * as THREE from "three";
 
 /* ============================================================
@@ -1440,6 +1447,394 @@ const Lights = () => {
   );
 };
 
+// ---------- Animated neon ground grid ----------
+const NeonGrid = ({ refs }: { refs: SharedRefs }) => {
+  const matRef = useRef<THREE.ShaderMaterial>(null);
+  const uniforms = useMemo(
+    () => ({
+      uTime: { value: 0 },
+      uOffset: { value: 0 },
+      uColorA: { value: new THREE.Color("#00f6ff") },
+      uColorB: { value: new THREE.Color("#ff2bd1") },
+    }),
+    [],
+  );
+  useFrame((_, dt) => {
+    uniforms.uTime.value += dt;
+    uniforms.uOffset.value += refs.speedRef.current * dt * 0.04;
+  });
+  return (
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, 0.02, 100]}
+    >
+      <planeGeometry args={[260, 600, 1, 1]} />
+      <shaderMaterial
+        ref={matRef}
+        transparent
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+        uniforms={uniforms}
+        vertexShader={`
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `}
+        fragmentShader={`
+          varying vec2 vUv;
+          uniform float uTime;
+          uniform float uOffset;
+          uniform vec3 uColorA;
+          uniform vec3 uColorB;
+          void main() {
+            // Horizon fade
+            float depthFade = smoothstep(0.0, 0.6, vUv.y) * smoothstep(1.0, 0.85, vUv.y);
+            // Skip the road area (center ~6% of width)
+            float roadMask = smoothstep(0.025, 0.045, abs(vUv.x - 0.5));
+            // Grid lines
+            float fx = abs(fract((vUv.x - 0.5) * 18.0 + 0.5) - 0.5);
+            float fy = abs(fract(vUv.y * 28.0 - uOffset) - 0.5);
+            float lineX = smoothstep(0.04, 0.0, fx);
+            float lineY = smoothstep(0.04, 0.0, fy);
+            float grid = max(lineX, lineY);
+            // Color shift
+            float t = 0.5 + 0.5 * sin(uTime * 0.6 + vUv.y * 4.0);
+            vec3 col = mix(uColorB, uColorA, t);
+            float alpha = grid * depthFade * roadMask * 0.85;
+            gl_FragColor = vec4(col * (1.5 + grid), alpha);
+          }
+        `}
+      />
+    </mesh>
+  );
+};
+
+// ---------- Flying drones with blinking lights ----------
+const Drones = ({ refs }: { refs: SharedRefs }) => {
+  const NUM = 14;
+  const drones = useMemo(() => {
+    return new Array(NUM).fill(0).map((_, i) => ({
+      side: i % 2 === 0 ? -1 : 1,
+      offset: (i / NUM) * 600,
+      x: (Math.random() - 0.5) * 60,
+      y: 18 + Math.random() * 22,
+      z: Math.random() * 600 - 100,
+      speed: 0.4 + Math.random() * 0.8,
+      blinkPhase: Math.random() * Math.PI * 2,
+      color: i % 3 === 0 ? "#ff2bd1" : i % 3 === 1 ? "#00f6ff" : "#ffd23a",
+    }));
+  }, []);
+  const refsArr = useRef<THREE.Group[]>([]);
+  const lightRefs = useRef<THREE.PointLight[]>([]);
+  useFrame((state, dt) => {
+    const playerZ = refs.distanceRef.current;
+    const t = state.clock.elapsedTime;
+    drones.forEach((d, i) => {
+      const g = refsArr.current[i];
+      if (!g) return;
+      // Drift slowly across the sky
+      d.x += d.speed * dt * d.side * 2;
+      if (d.x > 50) d.x = -50;
+      if (d.x < -50) d.x = 50;
+      // Recycle z relative to player
+      const relZ = d.z - playerZ;
+      if (relZ < -100) d.z += 600;
+      if (relZ > 500) d.z -= 600;
+      g.position.set(d.x, d.y + Math.sin(t * 0.5 + d.offset) * 0.6, d.z - playerZ);
+      const blink = 0.5 + 0.5 * Math.sin(t * 6 + d.blinkPhase);
+      const l = lightRefs.current[i];
+      if (l) l.intensity = 1 + blink * 4;
+    });
+  });
+  return (
+    <group>
+      {drones.map((d, i) => (
+        <group
+          key={i}
+          ref={(g) => {
+            if (g) refsArr.current[i] = g;
+          }}
+        >
+          {/* Body */}
+          <mesh>
+            <boxGeometry args={[0.8, 0.18, 0.4]} />
+            <meshStandardMaterial
+              color={"#0a0a18"}
+              emissive={d.color}
+              emissiveIntensity={0.6}
+              metalness={0.6}
+              roughness={0.4}
+            />
+          </mesh>
+          {/* Beacon */}
+          <mesh position={[0, -0.15, 0]}>
+            <sphereGeometry args={[0.12, 8, 8]} />
+            <meshBasicMaterial color={d.color} />
+          </mesh>
+          <pointLight
+            ref={(l) => {
+              if (l) lightRefs.current[i] = l;
+            }}
+            color={d.color}
+            intensity={2}
+            distance={14}
+            position={[0, -0.15, 0]}
+          />
+        </group>
+      ))}
+    </group>
+  );
+};
+
+// ---------- Holographic billboards floating between buildings ----------
+const Holograms = ({ refs }: { refs: SharedRefs }) => {
+  const holos = useMemo(() => {
+    return new Array(10).fill(0).map((_, i) => ({
+      side: i % 2 === 0 ? -1 : 1,
+      x: (i % 2 === 0 ? -1 : 1) * (12 + Math.random() * 6),
+      y: 6 + Math.random() * 8,
+      z: i * 80 + Math.random() * 40,
+      rot: (Math.random() - 0.5) * 0.4,
+      scale: 1 + Math.random() * 0.7,
+      color: i % 3 === 0 ? "#00f6ff" : i % 3 === 1 ? "#ff2bd1" : "#a26bff",
+      label: ["FRZN", "NEO", "LCDX", "RUSH", "▲▼", "404", "XTC", "VCTR", "■■■", "◆◆◆"][i % 10],
+    }));
+  }, []);
+  const refsArr = useRef<THREE.Group[]>([]);
+  const matsRef = useRef<THREE.MeshBasicMaterial[]>([]);
+  useFrame((state) => {
+    const playerZ = refs.distanceRef.current;
+    const t = state.clock.elapsedTime;
+    holos.forEach((h, i) => {
+      const g = refsArr.current[i];
+      if (!g) return;
+      const relZ = h.z - playerZ;
+      if (relZ < -50) h.z += 800;
+      if (relZ > 750) h.z -= 800;
+      g.position.set(h.x, h.y + Math.sin(t * 1.5 + i) * 0.3, h.z - playerZ);
+      g.rotation.y = h.rot + Math.sin(t * 0.4 + i) * 0.15;
+      const mat = matsRef.current[i];
+      if (mat) {
+        // Glitch flicker
+        const flicker = Math.random() < 0.04 ? 0.2 : 1;
+        mat.opacity = (0.55 + 0.25 * Math.sin(t * 3 + i)) * flicker;
+      }
+    });
+  });
+  return (
+    <group>
+      {holos.map((h, i) => (
+        <group
+          key={i}
+          ref={(g) => {
+            if (g) refsArr.current[i] = g;
+          }}
+          scale={h.scale}
+        >
+          {/* Holographic frame */}
+          <mesh>
+            <planeGeometry args={[3.2, 1.8]} />
+            <meshBasicMaterial
+              ref={(m) => {
+                if (m) matsRef.current[i] = m;
+              }}
+              color={h.color}
+              transparent
+              opacity={0.6}
+              blending={THREE.AdditiveBlending}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
+          </mesh>
+          {/* Border bars */}
+          <mesh position={[0, 0.95, 0.01]}>
+            <planeGeometry args={[3.2, 0.08]} />
+            <meshBasicMaterial color={h.color} side={THREE.DoubleSide} />
+          </mesh>
+          <mesh position={[0, -0.95, 0.01]}>
+            <planeGeometry args={[3.2, 0.08]} />
+            <meshBasicMaterial color={h.color} side={THREE.DoubleSide} />
+          </mesh>
+          {/* Inner scan lines */}
+          {[-0.4, 0, 0.4].map((y, k) => (
+            <mesh key={k} position={[0, y, 0.02]}>
+              <planeGeometry args={[2.6, 0.04]} />
+              <meshBasicMaterial
+                color={"#ffffff"}
+                transparent
+                opacity={0.4}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+          ))}
+          <pointLight
+            color={h.color}
+            intensity={1.4}
+            distance={10}
+            position={[0, 0, 0]}
+          />
+        </group>
+      ))}
+    </group>
+  );
+};
+
+// ---------- Speed lines streaking past camera at high speed ----------
+const SpeedLines = ({ refs }: { refs: SharedRefs }) => {
+  const NUM = 60;
+  const groupRef = useRef<THREE.Group>(null);
+  const linesData = useMemo(() => {
+    return new Array(NUM).fill(0).map(() => ({
+      x: (Math.random() - 0.5) * 30,
+      y: 1 + Math.random() * 8,
+      z: Math.random() * 80 - 40,
+    }));
+  }, []);
+  // Shared geometry & material (one instance for all lines)
+  const geom = useMemo(() => new THREE.PlaneGeometry(0.05, 4), []);
+  const sharedMat = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    [],
+  );
+  useFrame((_, dt) => {
+    const speed = refs.speedRef.current;
+    const intensity = Math.max(
+      0,
+      (speed - BASE_SPEED) / (NITRO_MAX_SPEED - BASE_SPEED),
+    );
+    sharedMat.opacity = intensity * 0.75;
+    if (!groupRef.current) return;
+    const move = speed * dt * 1.6;
+    groupRef.current.children.forEach((child) => {
+      const m = child as THREE.Mesh;
+      m.position.z -= move;
+      if (m.position.z < -20) {
+        m.position.z = 60 + Math.random() * 20;
+        m.position.x = (Math.random() - 0.5) * 30;
+        m.position.y = 1 + Math.random() * 8;
+      }
+    });
+  });
+  return (
+    <group ref={groupRef}>
+      {linesData.map((d, i) => (
+        <mesh
+          key={i}
+          position={[d.x, d.y, d.z]}
+          geometry={geom}
+          material={sharedMat}
+        />
+      ))}
+    </group>
+  );
+};
+
+// ---------- Nitro shockwave ring that pulses out from car when boosting ----------
+const NitroShockwave = ({ refs }: { refs: SharedRefs }) => {
+  const groupRef = useRef<THREE.Group>(null);
+  const ringRefs = useRef<THREE.Mesh[]>([]);
+  const NUM_RINGS = 3;
+  const rings = useRef(
+    new Array(NUM_RINGS).fill(0).map((_, i) => ({
+      age: i * 0.4,
+      active: false,
+    })),
+  );
+  useFrame((_, dt) => {
+    const boosting =
+      refs.input.current.nitro &&
+      refs.nitroRef.current > 0 &&
+      refs.speedRef.current > BASE_SPEED + 5;
+    rings.current.forEach((r, i) => {
+      if (boosting && !r.active && r.age > 0.3) {
+        r.active = true;
+        r.age = 0;
+      }
+      if (r.active) {
+        r.age += dt * 1.6;
+        if (r.age > 1) {
+          r.active = false;
+          r.age = 0;
+        }
+      } else if (boosting) {
+        r.age += dt;
+      }
+      const m = ringRefs.current[i];
+      if (m) {
+        if (r.active) {
+          const s = 0.5 + r.age * 6;
+          m.scale.set(s, s, s);
+          const mat = m.material as THREE.MeshBasicMaterial;
+          mat.opacity = (1 - r.age) * 0.7;
+          m.visible = true;
+        } else {
+          m.visible = false;
+        }
+      }
+    });
+    // Position behind car
+    if (groupRef.current) {
+      groupRef.current.position.x = refs.carXRef.current;
+      groupRef.current.position.z = -1.8;
+    }
+  });
+  return (
+    <group ref={groupRef} position={[0, 0.5, -1.8]}>
+      {new Array(NUM_RINGS).fill(0).map((_, i) => (
+        <mesh
+          key={i}
+          ref={(m) => {
+            if (m) ringRefs.current[i] = m;
+          }}
+          rotation={[Math.PI / 2, 0, 0]}
+          visible={false}
+        >
+          <ringGeometry args={[0.4, 0.55, 32]} />
+          <meshBasicMaterial
+            color={i % 2 === 0 ? "#00f6ff" : "#ff2bd1"}
+            transparent
+            opacity={0}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+};
+
+// ---------- Postprocessing stack: bloom + chromatic aberration + vignette ----------
+const PostFX = () => {
+  return (
+    <EffectComposer multisampling={0}>
+      <Bloom
+        intensity={1.4}
+        luminanceThreshold={0.25}
+        luminanceSmoothing={0.6}
+        mipmapBlur
+        radius={0.85}
+      />
+      <ChromaticAberration
+        offset={new THREE.Vector2(0.0015, 0.0015)}
+        blendFunction={BlendFunction.NORMAL}
+        radialModulation={false}
+        modulationOffset={0}
+      />
+      <Vignette eskil={false} offset={0.18} darkness={0.85} />
+    </EffectComposer>
+  );
+};
+
 // ---------- Top-level Scene ----------
 const Scene = ({ refs }: { refs: SharedRefs }) => {
   return (
@@ -1449,12 +1844,18 @@ const Scene = ({ refs }: { refs: SharedRefs }) => {
       <Lights />
       <Sky />
       <DistantSkyline />
+      <NeonGrid refs={refs} />
       <Road refs={refs} />
       <Buildings refs={refs} />
+      <Holograms refs={refs} />
+      <Drones refs={refs} />
       <Traffic refs={refs} />
       <PlayerCar refs={refs} />
+      <NitroShockwave refs={refs} />
+      <SpeedLines refs={refs} />
       <CameraFollow refs={refs} />
       <GameLogic refs={refs} />
+      <PostFX />
     </>
   );
 };
