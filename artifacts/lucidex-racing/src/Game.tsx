@@ -11,9 +11,7 @@ import {
   EffectComposer,
   Bloom,
   Vignette,
-  ChromaticAberration,
 } from "@react-three/postprocessing";
-import { BlendFunction } from "postprocessing";
 import * as THREE from "three";
 
 /* ============================================================
@@ -1608,7 +1606,7 @@ const NeonGrid = ({ refs }: { refs: SharedRefs }) => {
 
 // ---------- Flying drones with blinking lights ----------
 const Drones = ({ refs }: { refs: SharedRefs }) => {
-  const NUM = 14;
+  const NUM = 8;
   const drones = useMemo(() => {
     return new Array(NUM).fill(0).map((_, i) => ({
       side: i % 2 === 0 ? -1 : 1,
@@ -1622,7 +1620,6 @@ const Drones = ({ refs }: { refs: SharedRefs }) => {
     }));
   }, []);
   const refsArr = useRef<THREE.Group[]>([]);
-  const lightRefs = useRef<THREE.PointLight[]>([]);
   useFrame((state, dt) => {
     const playerZ = refs.distanceRef.current;
     const t = state.clock.elapsedTime;
@@ -1638,9 +1635,6 @@ const Drones = ({ refs }: { refs: SharedRefs }) => {
       if (relZ < -100) d.z += 600;
       if (relZ > 500) d.z -= 600;
       g.position.set(d.x, d.y + Math.sin(t * 0.5 + d.offset) * 0.6, d.z - playerZ);
-      const blink = 0.5 + 0.5 * Math.sin(t * 6 + d.blinkPhase);
-      const l = lightRefs.current[i];
-      if (l) l.intensity = 1 + blink * 4;
     });
   });
   return (
@@ -1668,15 +1662,6 @@ const Drones = ({ refs }: { refs: SharedRefs }) => {
             <sphereGeometry args={[0.12, 8, 8]} />
             <meshBasicMaterial color={d.color} />
           </mesh>
-          <pointLight
-            ref={(l) => {
-              if (l) lightRefs.current[i] = l;
-            }}
-            color={d.color}
-            intensity={2}
-            distance={14}
-            position={[0, -0.15, 0]}
-          />
         </group>
       ))}
     </group>
@@ -1764,12 +1749,6 @@ const Holograms = ({ refs }: { refs: SharedRefs }) => {
               />
             </mesh>
           ))}
-          <pointLight
-            color={h.color}
-            intensity={1.4}
-            distance={10}
-            position={[0, 0, 0]}
-          />
         </group>
       ))}
     </group>
@@ -1778,7 +1757,7 @@ const Holograms = ({ refs }: { refs: SharedRefs }) => {
 
 // ---------- Speed lines streaking past camera at high speed ----------
 const SpeedLines = ({ refs }: { refs: SharedRefs }) => {
-  const NUM = 60;
+  const NUM = 25;
   const groupRef = useRef<THREE.Group>(null);
   const linesData = useMemo(() => {
     return new Array(NUM).fill(0).map(() => ({
@@ -1908,32 +1887,25 @@ const NitroShockwave = ({ refs }: { refs: SharedRefs }) => {
   );
 };
 
-// ---------- Postprocessing stack: bloom + chromatic aberration + vignette ----------
+// ---------- Postprocessing stack: bloom + vignette (lightweight) ----------
 const PostFX = () => {
   return (
     <EffectComposer multisampling={0}>
       <Bloom
-        intensity={1.4}
-        luminanceThreshold={0.25}
-        luminanceSmoothing={0.6}
-        mipmapBlur
-        radius={0.85}
+        intensity={1.0}
+        luminanceThreshold={0.45}
+        luminanceSmoothing={0.5}
+        radius={0.6}
       />
-      <ChromaticAberration
-        offset={new THREE.Vector2(0.0015, 0.0015)}
-        blendFunction={BlendFunction.NORMAL}
-        radialModulation={false}
-        modulationOffset={0}
-      />
-      <Vignette eskil={false} offset={0.18} darkness={0.85} />
+      <Vignette eskil={false} offset={0.22} darkness={0.85} />
     </EffectComposer>
   );
 };
 
 // ---------- Overhead neon arches you fly through ----------
 const NeonArches = ({ refs }: { refs: SharedRefs }) => {
-  const NUM = 8;
-  const SPACING = 90;
+  const NUM = 4;
+  const SPACING = 140;
   const arches = useMemo(() => {
     return new Array(NUM).fill(0).map((_, i) => ({
       z: i * SPACING + 40,
@@ -2023,9 +1995,6 @@ const NeonArches = ({ refs }: { refs: SharedRefs }) => {
             <planeGeometry args={[6, 0.6]} />
             <meshBasicMaterial color={a.colorA} transparent opacity={0.5} />
           </mesh>
-          {/* Spotlights down from the arch */}
-          <pointLight color={a.colorA} intensity={2.4} distance={18} position={[-4, 8, 0]} />
-          <pointLight color={a.colorB} intensity={2.4} distance={18} position={[4, 8, 0]} />
         </group>
       ))}
     </group>
@@ -2086,7 +2055,7 @@ const LightningStorm = () => {
 
 // ---------- Floating embers / atmospheric particles ----------
 const Embers = ({ refs }: { refs: SharedRefs }) => {
-  const NUM = 200;
+  const NUM = 80;
   const pointsRef = useRef<THREE.Points>(null);
   const positions = useMemo(() => {
     const arr = new Float32Array(NUM * 3);
@@ -2831,8 +2800,8 @@ export default function Game() {
     >
       <Canvas
         shadows={false}
-        dpr={[1, 1.75]}
-        gl={{ antialias: true, powerPreference: "high-performance" }}
+        dpr={[1, 1.4]}
+        gl={{ antialias: false, powerPreference: "high-performance" }}
         camera={{ fov: 70, near: 0.1, far: 800, position: [0, 4.5, -8.5] }}
         frameloop={state === "playing" ? "always" : "demand"}
       >
