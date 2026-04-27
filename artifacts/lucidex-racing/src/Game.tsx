@@ -2305,6 +2305,8 @@ const HUD = ({
   input,
   muted,
   onToggleMute,
+  showTouch,
+  onToggleTouch,
   mode,
   onSelectMode,
 }: {
@@ -2320,6 +2322,8 @@ const HUD = ({
   input: React.MutableRefObject<InputState>;
   muted: boolean;
   onToggleMute: () => void;
+  showTouch: boolean;
+  onToggleTouch: () => void;
   mode: GameMode;
   onSelectMode: (m: GameMode) => void;
 }) => {
@@ -2389,26 +2393,68 @@ const HUD = ({
     [input],
   );
 
+  // Pointer-event handlers for touch buttons (work with finger, mouse, pen)
+  const pointer = useCallback(
+    (key: "left" | "right" | "drift" | "nitro") => ({
+      onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* noop */
+        }
+        press(key, true);
+      },
+      onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        press(key, false);
+      },
+      onPointerCancel: () => press(key, false),
+      onPointerLeave: (e: React.PointerEvent<HTMLDivElement>) => {
+        if (e.buttons === 0) return;
+        press(key, false);
+      },
+      onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+    }),
+    [press],
+  );
+
   return (
     <div className="hud">
-      {/* Mute button — visible in all states */}
-      <button
-        type="button"
-        onClick={onToggleMute}
-        title={muted ? "Unmute" : "Mute"}
-        className="absolute top-3 right-3 z-50 glass rounded-full w-10 h-10 flex items-center justify-center pointer-events-auto"
-        style={{
-          marginTop: state === "playing" ? "70px" : "0",
-          color: muted ? "#ff5577" : "#7ff7ff",
-          textShadow: muted
-            ? "0 0 8px #ff5577"
-            : "0 0 8px #7ff7ff",
-          fontSize: "18px",
-          lineHeight: 1,
-        }}
+      {/* Top-right corner buttons: mute + touch controls toggle */}
+      <div
+        className="absolute top-3 right-3 z-50 flex flex-col gap-2 pointer-events-auto"
+        style={{ marginTop: state === "playing" ? "70px" : "0" }}
       >
-        {muted ? "🔇" : "🔊"}
-      </button>
+        <button
+          type="button"
+          onClick={onToggleMute}
+          title={muted ? "Unmute" : "Mute"}
+          className="glass rounded-full w-10 h-10 flex items-center justify-center"
+          style={{
+            color: muted ? "#ff5577" : "#7ff7ff",
+            textShadow: muted ? "0 0 8px #ff5577" : "0 0 8px #7ff7ff",
+            fontSize: "18px",
+            lineHeight: 1,
+          }}
+        >
+          {muted ? "🔇" : "🔊"}
+        </button>
+        <button
+          type="button"
+          onClick={onToggleTouch}
+          title={showTouch ? "Hide touch controls" : "Show touch controls"}
+          className="glass rounded-full w-10 h-10 flex items-center justify-center"
+          style={{
+            color: showTouch ? "#ff2bd1" : "#7ff7ff",
+            textShadow: showTouch ? "0 0 8px #ff2bd1" : "0 0 8px #7ff7ff",
+            fontSize: "16px",
+            lineHeight: 1,
+          }}
+        >
+          🎮
+        </button>
+      </div>
 
       {/* Top bar */}
       {state === "playing" && (
@@ -2491,78 +2537,24 @@ const HUD = ({
             </div>
           </div>
 
-          {/* Mobile touch controls */}
-          {isMobile && (
-            <div className="flex items-end gap-2 sm:gap-3">
-              <div
-                className="touch-btn"
-                onTouchStart={(e) => {
-                  e.preventDefault();
-                  press("left", true);
-                }}
-                onTouchEnd={(e) => {
-                  e.preventDefault();
-                  press("left", false);
-                }}
-                onTouchCancel={(e) => {
-                  e.preventDefault();
-                  press("left", false);
-                }}
-              >
-                ◀
+          {/* On-screen controls (touch / mouse / pen) */}
+          {state === "playing" && showTouch && (
+            <>
+              {/* Left thumb cluster: steering arrows */}
+              <div className="touch-cluster touch-cluster-left">
+                <div className="touch-btn" {...pointer("left")}>◀</div>
+                <div className="touch-btn" {...pointer("right")}>▶</div>
               </div>
-              <div
-                className="touch-btn"
-                onTouchStart={(e) => {
-                  e.preventDefault();
-                  press("right", true);
-                }}
-                onTouchEnd={(e) => {
-                  e.preventDefault();
-                  press("right", false);
-                }}
-                onTouchCancel={(e) => {
-                  e.preventDefault();
-                  press("right", false);
-                }}
-              >
-                ▶
+              {/* Right thumb cluster: drift + nitro */}
+              <div className="touch-cluster touch-cluster-right">
+                <div className="touch-btn pink" {...pointer("drift")}>
+                  DRIFT
+                </div>
+                <div className="touch-btn yellow" {...pointer("nitro")}>
+                  NITRO
+                </div>
               </div>
-              <div
-                className="touch-btn pink"
-                onTouchStart={(e) => {
-                  e.preventDefault();
-                  press("drift", true);
-                }}
-                onTouchEnd={(e) => {
-                  e.preventDefault();
-                  press("drift", false);
-                }}
-                onTouchCancel={(e) => {
-                  e.preventDefault();
-                  press("drift", false);
-                }}
-              >
-                DRIFT
-              </div>
-              <div
-                className="touch-btn yellow"
-                onTouchStart={(e) => {
-                  e.preventDefault();
-                  press("nitro", true);
-                }}
-                onTouchEnd={(e) => {
-                  e.preventDefault();
-                  press("nitro", false);
-                }}
-                onTouchCancel={(e) => {
-                  e.preventDefault();
-                  press("nitro", false);
-                }}
-              >
-                NITRO
-              </div>
-            </div>
+            </>
           )}
 
           {/* Nitro gauge */}
@@ -2676,11 +2668,14 @@ const HUD = ({
               </div>
               <div className="glass rounded-lg p-3 text-left">
                 <div className="neon-pink font-bold tracking-widest mb-2">
-                  MOBILE
+                  TOUCH
                 </div>
                 <div>Tap ◀ ▶ to steer</div>
                 <div>Tap DRIFT to slide</div>
                 <div>Tap NITRO to boost</div>
+                <div className="mt-1 opacity-70 text-[10px] tracking-widest">
+                  TAP 🎮 TO {showTouch ? "HIDE" : "SHOW"} ON-SCREEN
+                </div>
               </div>
             </div>
 
@@ -2813,16 +2808,61 @@ export default function Game() {
     return () => cancelAnimationFrame(raf);
   }, [state, audioRef]);
 
-  // Mobile detection
+  // Mobile detection + touch-controls toggle
   const [isMobile, setIsMobile] = useState(false);
+  const [showTouch, setShowTouch] = useState(false);
   useEffect(() => {
-    const m =
+    const hasTouch =
       typeof window !== "undefined" &&
       ("ontouchstart" in window ||
         (navigator.maxTouchPoints && navigator.maxTouchPoints > 0));
+    const coarse =
+      typeof window !== "undefined" &&
+      window.matchMedia("(pointer: coarse)").matches;
     const small =
-      typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches;
-    setIsMobile(Boolean(m) || small);
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 900px)").matches;
+    const mobile = Boolean(hasTouch) || coarse || small;
+    setIsMobile(mobile);
+    let initial = mobile;
+    try {
+      const v = localStorage.getItem("lucidex.touchControls");
+      if (v === "1") initial = true;
+      else if (v === "0") initial = false;
+    } catch {
+      /* noop */
+    }
+    setShowTouch(initial);
+  }, []);
+
+  // Auto-enable touch controls the first time the user actually touches the screen
+  useEffect(() => {
+    if (showTouch) return;
+    const onFirstTouch = () => {
+      setShowTouch(true);
+      try {
+        localStorage.setItem("lucidex.touchControls", "1");
+      } catch {
+        /* noop */
+      }
+    };
+    window.addEventListener("touchstart", onFirstTouch, {
+      passive: true,
+      once: true,
+    });
+    return () => window.removeEventListener("touchstart", onFirstTouch);
+  }, [showTouch]);
+
+  const toggleTouch = useCallback(() => {
+    setShowTouch((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("lucidex.touchControls", next ? "1" : "0");
+      } catch {
+        /* noop */
+      }
+      return next;
+    });
   }, []);
 
   // Keyboard input
@@ -3042,6 +3082,8 @@ export default function Game() {
         input={inputRef}
         muted={muted}
         onToggleMute={toggleMute}
+        showTouch={showTouch}
+        onToggleTouch={toggleTouch}
         mode={mode}
         onSelectMode={(m) => {
           audioRef.current?.triggerClick();

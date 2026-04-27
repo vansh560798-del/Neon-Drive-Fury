@@ -242,6 +242,36 @@ canvas {
   transform: scale(0.94);
 }
 
+.touch-cluster {
+  position: fixed;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: row;
+  gap: 14px;
+  pointer-events: auto;
+  z-index: 60;
+  touch-action: none;
+}
+
+.touch-cluster-left {
+  left: max(16px, env(safe-area-inset-left));
+}
+
+.touch-cluster-right {
+  right: max(16px, env(safe-area-inset-right));
+}
+
+@media (max-width: 480px) {
+  .touch-btn {
+    width: 72px;
+    height: 72px;
+    font-size: 11px;
+  }
+  .touch-cluster {
+    gap: 10px;
+  }
+}
+
 .menu-btn {
   pointer-events: auto;
   cursor: pointer;
