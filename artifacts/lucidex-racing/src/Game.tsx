@@ -1058,8 +1058,66 @@ const Sky = () => {
           depthWrite={false}
         />
       </mesh>
+      {/* Giant ringed planet hanging over the horizon */}
+      <GiantPlanet />
       {/* Stars */}
       <Stars />
+    </group>
+  );
+};
+
+// ---------- Giant cyberpunk planet with rings ----------
+const GiantPlanet = () => {
+  const groupRef = useRef<THREE.Group>(null);
+  useFrame((_, dt) => {
+    if (groupRef.current) groupRef.current.rotation.z += dt * 0.05;
+  });
+  return (
+    <group position={[-90, 70, -260]} rotation={[0.2, 0.3, 0.4]}>
+      {/* Planet body */}
+      <mesh>
+        <sphereGeometry args={[28, 32, 32]} />
+        <meshBasicMaterial color={"#3a1a55"} />
+      </mesh>
+      {/* Bright rim glow */}
+      <mesh>
+        <sphereGeometry args={[29.5, 24, 24]} />
+        <meshBasicMaterial
+          color={"#ff2bd1"}
+          transparent
+          opacity={0.18}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          side={THREE.BackSide}
+        />
+      </mesh>
+      {/* Rotating ring system */}
+      <group ref={groupRef}>
+        <mesh rotation={[Math.PI / 2.4, 0, 0]}>
+          <ringGeometry args={[36, 50, 64]} />
+          <meshBasicMaterial
+            color={"#00f6ff"}
+            transparent
+            opacity={0.55}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+        <mesh rotation={[Math.PI / 2.4, 0, 0]}>
+          <ringGeometry args={[52, 58, 64]} />
+          <meshBasicMaterial
+            color={"#ff2bd1"}
+            transparent
+            opacity={0.4}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      </group>
+      {/* Soft halo light to wash the scene */}
+      <pointLight color={"#ff2bd1"} intensity={0.8} distance={400} />
     </group>
   );
 };
@@ -1326,16 +1384,25 @@ const CameraFollow = ({ refs }: { refs: SharedRefs }) => {
   const { camera } = useThree();
   const targetPos = useRef(new THREE.Vector3(0, 4.5, -8.5));
   const targetLook = useRef(new THREE.Vector3(0, 1.5, 6));
+  const crashShakeRef = useRef(0);
+  const wasCrashed = useRef(false);
+  const fovBaseRef = useRef(70);
 
   useEffect(() => {
     camera.position.set(0, 4.5, -8.5);
     camera.lookAt(0, 1.5, 6);
+    if ((camera as THREE.PerspectiveCamera).fov) {
+      fovBaseRef.current = (camera as THREE.PerspectiveCamera).fov;
+    }
   }, [camera]);
 
-  useFrame(() => {
+  useFrame((state) => {
     const x = refs.carXRef.current;
     const speed = refs.speedRef.current;
-    const speedFactor = Math.min(1, (speed - BASE_SPEED) / (NITRO_MAX_SPEED - BASE_SPEED));
+    const speedFactor = Math.min(
+      1,
+      (speed - BASE_SPEED) / (NITRO_MAX_SPEED - BASE_SPEED),
+    );
     const back = -8 - speedFactor * 1.5;
     const up = 4.4 + speedFactor * 0.3;
 
@@ -1344,6 +1411,34 @@ const CameraFollow = ({ refs }: { refs: SharedRefs }) => {
 
     camera.position.lerp(targetPos.current, 0.12);
     camera.lookAt(targetLook.current);
+
+    // ---- Camera shake ----
+    // Trigger a strong shake on the rising edge of crash
+    if (refs.crashedRef.current && !wasCrashed.current) {
+      crashShakeRef.current = 1;
+    }
+    wasCrashed.current = refs.crashedRef.current;
+    if (crashShakeRef.current > 0) crashShakeRef.current = Math.max(0, crashShakeRef.current - 0.025);
+
+    const boosting =
+      refs.input.current.nitro &&
+      refs.nitroRef.current > 0 &&
+      speed > BASE_SPEED + 5;
+    const boostShake = boosting ? speedFactor * 0.18 : 0;
+    const totalShake = crashShakeRef.current * 0.9 + boostShake;
+    const t = state.clock.elapsedTime;
+    if (totalShake > 0.001) {
+      camera.position.x += Math.sin(t * 47) * totalShake;
+      camera.position.y += Math.cos(t * 53) * totalShake * 0.6;
+    }
+
+    // Speed FOV pump — feels much faster
+    const cam = camera as THREE.PerspectiveCamera;
+    if (cam.isPerspectiveCamera) {
+      const targetFov = fovBaseRef.current + speedFactor * 14 + (boosting ? 4 : 0);
+      cam.fov += (targetFov - cam.fov) * 0.08;
+      cam.updateProjectionMatrix();
+    }
   });
   return null;
 };
@@ -1835,6 +1930,283 @@ const PostFX = () => {
   );
 };
 
+// ---------- Overhead neon arches you fly through ----------
+const NeonArches = ({ refs }: { refs: SharedRefs }) => {
+  const NUM = 8;
+  const SPACING = 90;
+  const arches = useMemo(() => {
+    return new Array(NUM).fill(0).map((_, i) => ({
+      z: i * SPACING + 40,
+      colorA: i % 2 === 0 ? "#00f6ff" : "#ff2bd1",
+      colorB: i % 2 === 0 ? "#ff2bd1" : "#00f6ff",
+      phase: Math.random() * Math.PI * 2,
+    }));
+  }, []);
+  const groupRefs = useRef<THREE.Group[]>([]);
+  const matRefs = useRef<THREE.MeshBasicMaterial[]>([]);
+  useFrame((state) => {
+    const playerZ = refs.distanceRef.current;
+    const t = state.clock.elapsedTime;
+    arches.forEach((a, i) => {
+      const g = groupRefs.current[i];
+      if (!g) return;
+      const relZ = a.z - playerZ;
+      if (relZ < -40) a.z += NUM * SPACING;
+      if (relZ > NUM * SPACING) a.z -= NUM * SPACING;
+      g.position.z = a.z - playerZ;
+      // pulse the inner ring
+      const m = matRefs.current[i];
+      if (m) {
+        m.opacity = 0.55 + 0.4 * Math.sin(t * 4 + a.phase);
+      }
+    });
+  });
+  return (
+    <group>
+      {arches.map((a, i) => (
+        <group
+          key={i}
+          ref={(g) => {
+            if (g) groupRefs.current[i] = g;
+          }}
+          position={[0, 0, a.z]}
+        >
+          {/* Top horizontal beam */}
+          <mesh position={[0, 9, 0]}>
+            <boxGeometry args={[18, 0.5, 1.2]} />
+            <meshStandardMaterial
+              color={"#1a0d2a"}
+              metalness={0.7}
+              roughness={0.4}
+              emissive={a.colorA}
+              emissiveIntensity={0.4}
+            />
+          </mesh>
+          {/* Glowing inner band on the beam */}
+          <mesh position={[0, 8.65, 0.62]}>
+            <boxGeometry args={[17.5, 0.18, 0.05]} />
+            <meshBasicMaterial
+              ref={(m) => {
+                if (m) matRefs.current[i] = m;
+              }}
+              color={a.colorA}
+              transparent
+              opacity={0.8}
+            />
+          </mesh>
+          {/* Side pillars */}
+          {[-9, 9].map((x) => (
+            <group key={x} position={[x, 0, 0]}>
+              <mesh position={[0, 4.5, 0]}>
+                <boxGeometry args={[0.6, 9, 0.8]} />
+                <meshStandardMaterial
+                  color={"#1a0d2a"}
+                  metalness={0.7}
+                  roughness={0.4}
+                  emissive={a.colorB}
+                  emissiveIntensity={0.5}
+                />
+              </mesh>
+              <mesh position={[Math.sign(x) * 0.31, 4.5, 0]}>
+                <boxGeometry args={[0.05, 8.6, 0.18]} />
+                <meshBasicMaterial color={a.colorB} />
+              </mesh>
+              {/* Base footing */}
+              <mesh position={[0, 0.2, 0]}>
+                <boxGeometry args={[1.2, 0.4, 1.4]} />
+                <meshStandardMaterial color={"#08050f"} metalness={0.6} roughness={0.5} />
+              </mesh>
+            </group>
+          ))}
+          {/* Cross hanging banner */}
+          <mesh position={[0, 7.6, 0.4]}>
+            <planeGeometry args={[6, 0.6]} />
+            <meshBasicMaterial color={a.colorA} transparent opacity={0.5} />
+          </mesh>
+          {/* Spotlights down from the arch */}
+          <pointLight color={a.colorA} intensity={2.4} distance={18} position={[-4, 8, 0]} />
+          <pointLight color={a.colorB} intensity={2.4} distance={18} position={[4, 8, 0]} />
+        </group>
+      ))}
+    </group>
+  );
+};
+
+// ---------- Lightning storm: occasional sky flashes + directional light ----------
+const LightningStorm = () => {
+  const lightRef = useRef<THREE.DirectionalLight>(null);
+  const flashRef = useRef<THREE.Mesh>(null);
+  const stateRef = useRef({ next: 4, t: 0, intensity: 0, x: 1 });
+  useFrame((_, dt) => {
+    const s = stateRef.current;
+    s.t += dt;
+    if (s.t > s.next) {
+      s.t = 0;
+      s.next = 5 + Math.random() * 8;
+      s.intensity = 1;
+      s.x = Math.random() < 0.5 ? -1 : 1;
+    }
+    s.intensity = Math.max(0, s.intensity - dt * 4);
+    // Multi-flicker pattern
+    const flicker = s.intensity > 0.2
+      ? s.intensity * (0.5 + 0.5 * Math.sin(s.t * 80))
+      : s.intensity;
+    if (lightRef.current) {
+      lightRef.current.intensity = flicker * 4;
+      lightRef.current.position.set(s.x * 200, 200, -200);
+    }
+    if (flashRef.current) {
+      const mat = flashRef.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = flicker * 0.45;
+      flashRef.current.position.set(s.x * 180, 90, -270);
+    }
+  });
+  return (
+    <group>
+      <directionalLight
+        ref={lightRef}
+        color={"#bfeaff"}
+        intensity={0}
+        position={[200, 200, -200]}
+      />
+      {/* Fake bright cloud where the lightning is */}
+      <mesh ref={flashRef} position={[180, 90, -270]}>
+        <planeGeometry args={[200, 120]} />
+        <meshBasicMaterial
+          color={"#dff7ff"}
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+    </group>
+  );
+};
+
+// ---------- Floating embers / atmospheric particles ----------
+const Embers = ({ refs }: { refs: SharedRefs }) => {
+  const NUM = 200;
+  const pointsRef = useRef<THREE.Points>(null);
+  const positions = useMemo(() => {
+    const arr = new Float32Array(NUM * 3);
+    for (let i = 0; i < NUM; i++) {
+      arr[i * 3 + 0] = (Math.random() - 0.5) * 80;
+      arr[i * 3 + 1] = Math.random() * 20 + 1;
+      arr[i * 3 + 2] = Math.random() * 200 - 50;
+    }
+    return arr;
+  }, []);
+  const velocities = useMemo(() => {
+    const arr = new Float32Array(NUM * 3);
+    for (let i = 0; i < NUM; i++) {
+      arr[i * 3 + 0] = (Math.random() - 0.5) * 0.8;
+      arr[i * 3 + 1] = 0.4 + Math.random() * 0.6;
+      arr[i * 3 + 2] = (Math.random() - 0.5) * 0.4;
+    }
+    return arr;
+  }, []);
+  useFrame((_, dt) => {
+    const geom = pointsRef.current?.geometry;
+    if (!geom) return;
+    const attr = geom.attributes.position as THREE.BufferAttribute;
+    const arr = attr.array as Float32Array;
+    const speed = refs.speedRef.current;
+    for (let i = 0; i < NUM; i++) {
+      arr[i * 3 + 0] += velocities[i * 3 + 0] * dt;
+      arr[i * 3 + 1] += velocities[i * 3 + 1] * dt;
+      // particles get pushed back relative to player movement
+      arr[i * 3 + 2] += velocities[i * 3 + 2] * dt - speed * dt * 0.55;
+      // recycle
+      if (arr[i * 3 + 2] < -30) {
+        arr[i * 3 + 0] = (Math.random() - 0.5) * 80;
+        arr[i * 3 + 1] = 0.5 + Math.random() * 4;
+        arr[i * 3 + 2] = 150 + Math.random() * 60;
+      }
+      if (arr[i * 3 + 1] > 22) {
+        arr[i * 3 + 1] = 0.5;
+      }
+    }
+    attr.needsUpdate = true;
+  });
+  return (
+    <points ref={pointsRef}>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          args={[positions, 3]}
+        />
+      </bufferGeometry>
+      <pointsMaterial
+        size={0.18}
+        color={"#ffae3a"}
+        transparent
+        opacity={0.85}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+        sizeAttenuation
+      />
+    </points>
+  );
+};
+
+// ---------- Boost trail: bright streaks behind car when nitroing ----------
+const BoostTrail = ({ refs }: { refs: SharedRefs }) => {
+  const groupRef = useRef<THREE.Group>(null);
+  const matRefs = useRef<THREE.MeshBasicMaterial[]>([]);
+  const HISTORY = 10;
+  const history = useRef(
+    new Array(HISTORY).fill(0).map(() => ({ x: 0, age: 999 })),
+  );
+  const tickRef = useRef(0);
+  useFrame((_, dt) => {
+    const boosting =
+      refs.input.current.nitro &&
+      refs.nitroRef.current > 0 &&
+      refs.speedRef.current > BASE_SPEED + 5;
+    tickRef.current += dt;
+    if (boosting && tickRef.current > 0.05) {
+      tickRef.current = 0;
+      // Push new history entry at current car x
+      history.current.unshift({ x: refs.carXRef.current, age: 0 });
+      history.current.pop();
+    }
+    history.current.forEach((h, i) => {
+      h.age += dt;
+      const m = matRefs.current[i];
+      const g = groupRef.current?.children[i];
+      if (!m || !g) return;
+      const fade = Math.max(0, 1 - h.age * 1.6);
+      m.opacity = fade * 0.85;
+      g.position.x = h.x;
+      g.position.y = 0.45;
+      g.position.z = -2 - i * 1.4;
+      const mesh = g as THREE.Mesh;
+      mesh.scale.x = 0.3 + (1 - fade) * 0.6;
+    });
+  });
+  return (
+    <group ref={groupRef}>
+      {new Array(HISTORY).fill(0).map((_, i) => (
+        <mesh key={i} position={[0, 0.45, -2 - i * 1.4]}>
+          <planeGeometry args={[1.6, 1.0]} />
+          <meshBasicMaterial
+            ref={(m) => {
+              if (m) matRefs.current[i] = m;
+            }}
+            color={i % 2 === 0 ? "#00f6ff" : "#ff2bd1"}
+            transparent
+            opacity={0}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+};
+
 // ---------- Top-level Scene ----------
 const Scene = ({ refs }: { refs: SharedRefs }) => {
   return (
@@ -1842,15 +2214,19 @@ const Scene = ({ refs }: { refs: SharedRefs }) => {
       <fog attach="fog" args={["#0a0420", 30, 240]} />
       <color attach="background" args={["#04031a"]} />
       <Lights />
+      <LightningStorm />
       <Sky />
       <DistantSkyline />
       <NeonGrid refs={refs} />
       <Road refs={refs} />
       <Buildings refs={refs} />
+      <NeonArches refs={refs} />
       <Holograms refs={refs} />
       <Drones refs={refs} />
+      <Embers refs={refs} />
       <Traffic refs={refs} />
       <PlayerCar refs={refs} />
+      <BoostTrail refs={refs} />
       <NitroShockwave refs={refs} />
       <SpeedLines refs={refs} />
       <CameraFollow refs={refs} />
