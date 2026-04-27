@@ -40,6 +40,71 @@ const NITRO_DRAIN = 28; // % per second
 const NITRO_REGEN = 14; // % per second (when not boosting)
 
 type GameState = "menu" | "playing" | "crashed";
+type GameMode = "easy" | "medium" | "hard" | "drift";
+
+interface ModeConfig {
+  label: string;
+  color: string;
+  speedMul: number;       // multiplier on MAX_SPEED / NITRO_MAX_SPEED
+  baseSpeedMul: number;   // multiplier on BASE_SPEED
+  spawnInterval: number;  // seconds between traffic spawn attempts
+  trafficSpeedMul: number;
+  nitroDrain: number;
+  nitroRegen: number;
+  driftBoosts: boolean;   // drift adds to nitro
+  driftScoring: boolean;  // track + display drift score
+}
+
+const MODE_CONFIGS: Record<GameMode, ModeConfig> = {
+  easy: {
+    label: "EASY",
+    color: "#7fff9e",
+    speedMul: 0.85,
+    baseSpeedMul: 0.95,
+    spawnInterval: 2.6,
+    trafficSpeedMul: 0.8,
+    nitroDrain: 18,
+    nitroRegen: 22,
+    driftBoosts: false,
+    driftScoring: false,
+  },
+  medium: {
+    label: "MEDIUM",
+    color: "#00f6ff",
+    speedMul: 1.0,
+    baseSpeedMul: 1.0,
+    spawnInterval: 1.8,
+    trafficSpeedMul: 1.0,
+    nitroDrain: 28,
+    nitroRegen: 14,
+    driftBoosts: false,
+    driftScoring: false,
+  },
+  hard: {
+    label: "HARD",
+    color: "#ff5577",
+    speedMul: 1.18,
+    baseSpeedMul: 1.1,
+    spawnInterval: 1.0,
+    trafficSpeedMul: 1.2,
+    nitroDrain: 36,
+    nitroRegen: 10,
+    driftBoosts: false,
+    driftScoring: false,
+  },
+  drift: {
+    label: "DRIFT",
+    color: "#ff2bd1",
+    speedMul: 1.0,
+    baseSpeedMul: 1.0,
+    spawnInterval: 1.6,
+    trafficSpeedMul: 0.9,
+    nitroDrain: 22,
+    nitroRegen: 0,
+    driftBoosts: true,
+    driftScoring: true,
+  },
+};
 
 interface InputState {
   steer: number; // -1 (left) to 1 (right)
@@ -55,6 +120,8 @@ interface SharedRefs {
   driftAngleRef: React.MutableRefObject<number>;
   carXRef: React.MutableRefObject<number>;
   crashedRef: React.MutableRefObject<boolean>;
+  modeRef: React.MutableRefObject<ModeConfig>;
+  driftScoreRef: React.MutableRefObject<number>;
   onCrash: () => void;
 }
 
@@ -1310,16 +1377,17 @@ const Traffic = ({ refs }: { refs: SharedRefs }) => {
   useFrame((_, dt) => {
     const dist = refs.distanceRef.current;
     lastSpawnRef.current += dt;
+    const cfg = refs.modeRef.current;
 
-    // Spawn cadence
-    if (lastSpawnRef.current > TRAFFIC_SPAWN_INTERVAL) {
+    // Spawn cadence (mode-tuned)
+    if (lastSpawnRef.current > cfg.spawnInterval) {
       lastSpawnRef.current = 0;
       const free = carsRef.current.find((c) => !c.current.alive);
       if (free) {
         const lane = Math.floor(Math.random() * 4);
         free.current.laneIndex = lane;
         free.current.z = dist + 220 + Math.random() * 40;
-        free.current.speed = -(8 + Math.random() * 16); // oncoming
+        free.current.speed = -(8 + Math.random() * 16) * cfg.trafficSpeedMul;
         free.current.color =
           trafficColors[Math.floor(Math.random() * trafficColors.length)];
         free.current.alive = true;
@@ -1464,21 +1532,39 @@ const GameLogic = ({ refs }: { refs: SharedRefs }) => {
     const input = refs.input.current;
     const drifting = input.drift;
     const boosting = input.nitro && refs.nitroRef.current > 0;
+    const cfg = refs.modeRef.current;
 
     // Nitro management
     if (boosting) {
-      refs.nitroRef.current = Math.max(0, refs.nitroRef.current - NITRO_DRAIN * dt);
+      refs.nitroRef.current = Math.max(
+        0,
+        refs.nitroRef.current - cfg.nitroDrain * dt,
+      );
     } else {
       refs.nitroRef.current = Math.min(
         100,
-        refs.nitroRef.current + NITRO_REGEN * dt,
+        refs.nitroRef.current + cfg.nitroRegen * dt,
       );
     }
+    // Drift mode: drifting refills nitro
+    if (cfg.driftBoosts && drifting && refs.speedRef.current > BASE_SPEED) {
+      refs.nitroRef.current = Math.min(
+        100,
+        refs.nitroRef.current + 24 * dt,
+      );
+    }
+    // Drift mode: track drift score (drift seconds × speed factor)
+    if (cfg.driftScoring && drifting) {
+      const sf = Math.max(0.4, refs.speedRef.current / MAX_SPEED);
+      refs.driftScoreRef.current += dt * 100 * sf;
+    }
 
-    // Target speed
-    let targetSpeed = MAX_SPEED;
-    if (boosting) targetSpeed = NITRO_MAX_SPEED;
-    if (drifting) targetSpeed = Math.min(targetSpeed, MAX_SPEED * 0.7);
+    // Target speed (mode-tuned)
+    const modeMax = MAX_SPEED * cfg.speedMul;
+    const modeNitroMax = NITRO_MAX_SPEED * cfg.speedMul;
+    let targetSpeed = modeMax;
+    if (boosting) targetSpeed = modeNitroMax;
+    if (drifting) targetSpeed = Math.min(targetSpeed, modeMax * 0.7);
 
     // Approach target speed
     if (refs.speedRef.current < targetSpeed) {
@@ -2212,24 +2298,30 @@ const HUD = ({
   distanceRef,
   nitroRef,
   bestRef,
+  driftScoreRef,
   onStart,
   onRestart,
   isMobile,
   input,
   muted,
   onToggleMute,
+  mode,
+  onSelectMode,
 }: {
   state: GameState;
   speedRef: React.MutableRefObject<number>;
   distanceRef: React.MutableRefObject<number>;
   nitroRef: React.MutableRefObject<number>;
   bestRef: React.MutableRefObject<number>;
+  driftScoreRef: React.MutableRefObject<number>;
   onStart: () => void;
   onRestart: () => void;
   isMobile: boolean;
   input: React.MutableRefObject<InputState>;
   muted: boolean;
   onToggleMute: () => void;
+  mode: GameMode;
+  onSelectMode: (m: GameMode) => void;
 }) => {
   const speedEl = useRef<HTMLDivElement>(null);
   const distEl = useRef<HTMLDivElement>(null);
@@ -2237,6 +2329,11 @@ const HUD = ({
   const finalDistEl = useRef<HTMLSpanElement>(null);
   const finalSpeedEl = useRef<HTMLSpanElement>(null);
   const bestEl = useRef<HTMLSpanElement>(null);
+  const driftScoreEl = useRef<HTMLDivElement>(null);
+  const finalDriftEl = useRef<HTMLSpanElement>(null);
+
+  const cfg = MODE_CONFIGS[mode];
+  const isDriftMode = cfg.driftScoring;
 
   // Update HUD via raf so it doesn't trigger React renders
   useEffect(() => {
@@ -2253,6 +2350,10 @@ const HUD = ({
       if (nitroEl.current) {
         nitroEl.current.style.width = nitroRef.current.toFixed(1) + "%";
       }
+      if (driftScoreEl.current) {
+        driftScoreEl.current.textContent =
+          Math.round(driftScoreRef.current).toLocaleString() + " PTS";
+      }
       if (finalDistEl.current) {
         finalDistEl.current.textContent =
           (distanceRef.current / 1000).toFixed(2) + " KM";
@@ -2261,15 +2362,20 @@ const HUD = ({
         finalSpeedEl.current.textContent =
           Math.round(speedRef.current * 3.6) + " KPH";
       }
+      if (finalDriftEl.current) {
+        finalDriftEl.current.textContent =
+          Math.round(driftScoreRef.current).toLocaleString() + " PTS";
+      }
       if (bestEl.current) {
-        bestEl.current.textContent =
-          (bestRef.current / 1000).toFixed(2) + " KM";
+        bestEl.current.textContent = isDriftMode
+          ? Math.round(bestRef.current).toLocaleString() + " PTS"
+          : (bestRef.current / 1000).toFixed(2) + " KM";
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [speedRef, distanceRef, nitroRef, bestRef]);
+  }, [speedRef, distanceRef, nitroRef, bestRef, driftScoreRef, isDriftMode]);
 
   // Touch button handlers
   const press = useCallback(
@@ -2317,6 +2423,26 @@ const HUD = ({
             >
               0.00 KM
             </div>
+            {isDriftMode && (
+              <>
+                <div
+                  className="text-[10px] tracking-[0.3em] mt-1"
+                  style={{ color: cfg.color, opacity: 0.85 }}
+                >
+                  DRIFT SCORE
+                </div>
+                <div
+                  ref={driftScoreEl}
+                  className="text-xl font-extrabold neon-text"
+                  style={{
+                    color: cfg.color,
+                    textShadow: `0 0 8px ${cfg.color}, 0 0 16px ${cfg.color}`,
+                  }}
+                >
+                  0 PTS
+                </div>
+              </>
+            )}
           </div>
           <div className="glass rounded-lg px-4 py-2 text-center">
             <div
@@ -2325,8 +2451,11 @@ const HUD = ({
             >
               LUCIDEX RACING
             </div>
-            <div className="text-[10px] tracking-[0.3em] neon-pink opacity-80">
-              NEO TOKYO ROUTE 7
+            <div
+              className="text-[10px] tracking-[0.3em] opacity-90 mt-0.5"
+              style={{ color: cfg.color, textShadow: `0 0 6px ${cfg.color}` }}
+            >
+              MODE · {cfg.label}
             </div>
           </div>
           <div className="glass rounded-lg px-4 py-2 text-right">
@@ -2334,7 +2463,7 @@ const HUD = ({
               BEST
             </div>
             <div className="text-2xl font-extrabold neon-text neon-pink">
-              <span ref={bestEl}>0.00 KM</span>
+              <span ref={bestEl}>{isDriftMode ? "0 PTS" : "0.00 KM"}</span>
             </div>
           </div>
         </div>
@@ -2486,7 +2615,53 @@ const HUD = ({
               and chase your distance record before the grid catches you.
             </p>
 
-            <button className="menu-btn mt-8" onClick={onStart}>
+            <div className="mt-7">
+              <div className="text-[10px] tracking-[0.5em] neon-cyan opacity-80 mb-2">
+                SELECT MODE
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {(Object.keys(MODE_CONFIGS) as GameMode[]).map((m) => {
+                  const c = MODE_CONFIGS[m];
+                  const active = m === mode;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => onSelectMode(m)}
+                      className="glass rounded-lg py-2 text-[11px] sm:text-xs font-bold tracking-[0.2em] pointer-events-auto transition-transform"
+                      style={{
+                        color: c.color,
+                        border: active
+                          ? `1px solid ${c.color}`
+                          : "1px solid rgba(255,255,255,0.08)",
+                        boxShadow: active
+                          ? `0 0 14px ${c.color}, inset 0 0 14px ${c.color}33`
+                          : "none",
+                        textShadow: `0 0 6px ${c.color}`,
+                        transform: active ? "translateY(-1px)" : "none",
+                        fontFamily: "Orbitron, sans-serif",
+                      }}
+                    >
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div
+                className="mt-2 text-[10px] tracking-[0.25em] opacity-80"
+                style={{ color: cfg.color, textShadow: `0 0 6px ${cfg.color}` }}
+              >
+                {mode === "easy" &&
+                  "RELAXED PACE · LIGHT TRAFFIC · EASY NITRO"}
+                {mode === "medium" && "BALANCED RUN · CLASSIC NEO TOKYO"}
+                {mode === "hard" &&
+                  "DENSE TRAFFIC · FAST RIVALS · TIGHT NITRO"}
+                {mode === "drift" &&
+                  "DRIFT TO SCORE · DRIFTS REFILL NITRO · POINTS = BEST"}
+              </div>
+            </div>
+
+            <button className="menu-btn mt-6" onClick={onStart}>
               ▶ Start Race
             </button>
 
@@ -2511,7 +2686,8 @@ const HUD = ({
 
             {bestRef.current > 0 && (
               <div className="mt-6 text-xs tracking-[0.3em] neon-yellow opacity-90">
-                BEST DISTANCE · <span ref={bestEl}>0.00 KM</span>
+                {isDriftMode ? "BEST DRIFT" : "BEST DISTANCE"} ·{" "}
+                <span ref={bestEl}>{isDriftMode ? "0 PTS" : "0.00 KM"}</span>
               </div>
             )}
           </div>
@@ -2532,6 +2708,12 @@ const HUD = ({
             <p className="text-sm text-cyan-100/70 mt-2 tracking-widest">
               SYSTEM RECOVERY · STANDBY
             </p>
+            <div
+              className="text-[10px] tracking-[0.4em] mt-2 opacity-90"
+              style={{ color: cfg.color, textShadow: `0 0 6px ${cfg.color}` }}
+            >
+              MODE · {cfg.label}
+            </div>
             <div className="mt-5 grid grid-cols-2 gap-4 text-left">
               <div>
                 <div className="text-[10px] tracking-[0.3em] neon-cyan opacity-80">
@@ -2550,8 +2732,27 @@ const HUD = ({
                 </div>
               </div>
             </div>
+            {isDriftMode && (
+              <div className="mt-4 text-left">
+                <div
+                  className="text-[10px] tracking-[0.3em] opacity-85"
+                  style={{ color: cfg.color }}
+                >
+                  DRIFT SCORE
+                </div>
+                <div
+                  className="text-3xl font-extrabold neon-text"
+                  style={{
+                    color: cfg.color,
+                    textShadow: `0 0 8px ${cfg.color}, 0 0 16px ${cfg.color}`,
+                  }}
+                >
+                  <span ref={finalDriftEl}>0 PTS</span>
+                </div>
+              </div>
+            )}
             <div className="mt-4 text-[10px] tracking-[0.3em] neon-pink opacity-80">
-              BEST · <span ref={bestEl}>0.00 KM</span>
+              BEST · <span ref={bestEl}>{isDriftMode ? "0 PTS" : "0.00 KM"}</span>
             </div>
             <button className="menu-btn mt-6" onClick={onRestart}>
               ↻ Race Again
@@ -2569,6 +2770,7 @@ const HUD = ({
 export default function Game() {
   const [state, setState] = useState<GameState>("menu");
   const [muted, setMutedState] = useState(false);
+  const [mode, setMode] = useState<GameMode>("medium");
 
   // Shared refs (mutable, no React re-renders)
   const inputRef = useRef<InputState>({ steer: 0, drift: false, nitro: false });
@@ -2581,6 +2783,8 @@ export default function Game() {
   const bestRef = useRef(0);
   const topSpeedRef = useRef(0);
   const nitroPrevRef = useRef(false);
+  const modeRef = useRef<ModeConfig>(MODE_CONFIGS.medium);
+  const driftScoreRef = useRef(0);
 
   // Audio
   const audioRef = useAudioApi();
@@ -2711,38 +2915,42 @@ export default function Game() {
   }, [isMobile]);
 
   const startRace = useCallback(() => {
-    speedRef.current = BASE_SPEED;
+    const cfg = MODE_CONFIGS[mode];
+    modeRef.current = cfg;
+    speedRef.current = BASE_SPEED * cfg.baseSpeedMul;
     distanceRef.current = 0;
     nitroRef.current = 100;
     driftAngleRef.current = 0;
     carXRef.current = 0;
     crashedRef.current = false;
-    topSpeedRef.current = BASE_SPEED;
+    topSpeedRef.current = BASE_SPEED * cfg.baseSpeedMul;
+    driftScoreRef.current = 0;
     inputRef.current = { steer: 0, drift: false, nitro: false };
     audioRef.current?.resume();
     audioRef.current?.triggerStart();
     setState("playing");
-  }, [audioRef]);
+  }, [audioRef, mode]);
 
   const restart = useCallback(() => {
     startRace();
   }, [startRace]);
 
   const handleCrash = useCallback(() => {
-    if (distanceRef.current > bestRef.current) {
-      bestRef.current = distanceRef.current;
+    const cfg = modeRef.current;
+    const score = cfg.driftScoring
+      ? driftScoreRef.current
+      : distanceRef.current;
+    if (score > bestRef.current) {
+      bestRef.current = score;
       try {
-        localStorage.setItem(
-          "lucidex.best",
-          String(bestRef.current),
-        );
+        localStorage.setItem(`lucidex.best.${mode}`, String(bestRef.current));
       } catch {
         /* noop */
       }
     }
     audioRef.current?.triggerCrash();
     setState("crashed");
-  }, [audioRef]);
+  }, [audioRef, mode]);
 
   const toggleMute = useCallback(() => {
     setMutedState((m) => {
@@ -2769,15 +2977,24 @@ export default function Game() {
     restart();
   }, [audioRef, restart]);
 
-  // Load best
+  // Load best (per mode), and migrate the legacy distance key into "medium"
   useEffect(() => {
     try {
-      const v = localStorage.getItem("lucidex.best");
-      if (v) bestRef.current = Number(v) || 0;
+      const legacy = localStorage.getItem("lucidex.best");
+      if (legacy && !localStorage.getItem("lucidex.best.medium")) {
+        localStorage.setItem("lucidex.best.medium", legacy);
+      }
+      const v = localStorage.getItem(`lucidex.best.${mode}`);
+      bestRef.current = v ? Number(v) || 0 : 0;
     } catch {
-      /* noop */
+      bestRef.current = 0;
     }
-  }, []);
+  }, [mode]);
+
+  // Keep modeRef live with current selection for the next race
+  useEffect(() => {
+    modeRef.current = MODE_CONFIGS[mode];
+  }, [mode]);
 
   // Engine audio
   useEngineSync(audioRef, speedRef, inputRef, state === "playing");
@@ -2790,6 +3007,8 @@ export default function Game() {
     driftAngleRef,
     carXRef,
     crashedRef,
+    modeRef,
+    driftScoreRef,
     onCrash: handleCrash,
   };
 
@@ -2816,12 +3035,18 @@ export default function Game() {
         distanceRef={distanceRef}
         nitroRef={nitroRef}
         bestRef={bestRef}
+        driftScoreRef={driftScoreRef}
         onStart={handleStartClick}
         onRestart={handleRestartClick}
         isMobile={isMobile}
         input={inputRef}
         muted={muted}
         onToggleMute={toggleMute}
+        mode={mode}
+        onSelectMode={(m) => {
+          audioRef.current?.triggerClick();
+          setMode(m);
+        }}
       />
     </div>
   );
