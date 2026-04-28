@@ -365,6 +365,291 @@ const CARS_BY_ID: Record<string, Car> = Object.fromEntries(
   CARS.map((c) => [c.id, c]),
 );
 
+// ---------- Route catalog ----------
+// Each route is a visual world preset: sky/fog/road/building palette.
+interface Route {
+  id: string;
+  name: string;
+  bg: string; // canvas background color
+  fog: string; // fog color
+  fogNear: number;
+  fogFar: number;
+  sky: string; // skydome color
+  glowA: string; // horizon glow far layer
+  glowB: string; // horizon glow mid layer
+  glowC: string; // horizon glow near layer
+  asphalt: string; // road color
+  curb: string; // glowing curb color
+  dashEm: string; // road dash emissive
+  buildingPalette: string[]; // 4-5 building body colors
+  neonColors: string[]; // 4-5 building neon accents
+  archA: string; // arch primary
+  archB: string; // arch secondary
+  ambient: string; // ambient light tint
+  directional: string; // directional light tint
+  hemiSky: string;
+  hemiGround: string;
+  skylineFar: string; // far skyline emissive
+  skylineNear: string; // mid skyline emissive
+}
+
+const ROUTES: Route[] = [
+  {
+    id: "neo_tokyo",
+    name: "Neo Tokyo",
+    bg: "#04031a",
+    fog: "#0a0420",
+    fogNear: 30,
+    fogFar: 240,
+    sky: "#04031a",
+    glowA: "#ff2bd1",
+    glowB: "#9b30ff",
+    glowC: "#00f6ff",
+    asphalt: "#070710",
+    curb: "#00f6ff",
+    dashEm: "#ffd6ff",
+    buildingPalette: ["#1a1040", "#280a3a", "#0a0a30", "#150a3a", "#1f0a30"],
+    neonColors: ["#00f6ff", "#ff2bd1", "#9b30ff", "#ffe600", "#6effaa"],
+    archA: "#00f6ff",
+    archB: "#ff2bd1",
+    ambient: "#7080ff",
+    directional: "#9bb0ff",
+    hemiSky: "#ff80e0",
+    hemiGround: "#0a0030",
+    skylineFar: "#3a0a52",
+    skylineNear: "#0a3050",
+  },
+  {
+    id: "crimson",
+    name: "Crimson District",
+    bg: "#1a0408",
+    fog: "#3a0a14",
+    fogNear: 28,
+    fogFar: 220,
+    sky: "#1a0408",
+    glowA: "#ff2030",
+    glowB: "#ff5722",
+    glowC: "#ffd400",
+    asphalt: "#1a0808",
+    curb: "#ff2030",
+    dashEm: "#ff8a00",
+    buildingPalette: ["#3a0a14", "#28080a", "#1a040a", "#3a1408", "#280808"],
+    neonColors: ["#ff2030", "#ff8a00", "#ffd400", "#ff5577", "#ff5722"],
+    archA: "#ff2030",
+    archB: "#ff8a00",
+    ambient: "#ff5722",
+    directional: "#ffb070",
+    hemiSky: "#ff8050",
+    hemiGround: "#1a0408",
+    skylineFar: "#5a0a1a",
+    skylineNear: "#3a0e08",
+  },
+  {
+    id: "ion_plains",
+    name: "Ion Plains",
+    bg: "#020c1a",
+    fog: "#04162a",
+    fogNear: 32,
+    fogFar: 260,
+    sky: "#020c1a",
+    glowA: "#22d3ee",
+    glowB: "#3b82f6",
+    glowC: "#7ff7ff",
+    asphalt: "#040a14",
+    curb: "#7ff7ff",
+    dashEm: "#7ff7ff",
+    buildingPalette: ["#06182a", "#0a2540", "#10355a", "#062030", "#0a1a2a"],
+    neonColors: ["#22d3ee", "#3b82f6", "#7ff7ff", "#a855f7", "#cfeaff"],
+    archA: "#22d3ee",
+    archB: "#3b82f6",
+    ambient: "#5fb0ff",
+    directional: "#a8d4ff",
+    hemiSky: "#7ff7ff",
+    hemiGround: "#020c1a",
+    skylineFar: "#0a2845",
+    skylineNear: "#0a3a5a",
+  },
+  {
+    id: "toxic",
+    name: "Toxic Zone",
+    bg: "#0a1a04",
+    fog: "#1a2808",
+    fogNear: 26,
+    fogFar: 200,
+    sky: "#0a1a04",
+    glowA: "#39ff14",
+    glowB: "#caff00",
+    glowC: "#facc15",
+    asphalt: "#0a1004",
+    curb: "#39ff14",
+    dashEm: "#caff70",
+    buildingPalette: ["#1a2808", "#0a1804", "#162005", "#0e1804", "#0a2008"],
+    neonColors: ["#39ff14", "#caff00", "#facc15", "#10b981", "#7fff70"],
+    archA: "#39ff14",
+    archB: "#caff00",
+    ambient: "#80ff60",
+    directional: "#d0ffa0",
+    hemiSky: "#caff70",
+    hemiGround: "#0a1a04",
+    skylineFar: "#1a3008",
+    skylineNear: "#1a4008",
+  },
+  {
+    id: "sakura",
+    name: "Neon Sakura",
+    bg: "#28041a",
+    fog: "#3a0a2a",
+    fogNear: 30,
+    fogFar: 240,
+    sky: "#28041a",
+    glowA: "#ff7ac6",
+    glowB: "#f0abfc",
+    glowC: "#ffd5e8",
+    asphalt: "#1a0810",
+    curb: "#ff7ac6",
+    dashEm: "#ffd5e8",
+    buildingPalette: ["#28041a", "#3a0a2a", "#1a0a20", "#3a1030", "#28082a"],
+    neonColors: ["#ff7ac6", "#f0abfc", "#ff5577", "#ffd5e8", "#a855f7"],
+    archA: "#ff7ac6",
+    archB: "#f0abfc",
+    ambient: "#ffaad4",
+    directional: "#ffd5e8",
+    hemiSky: "#ffd5e8",
+    hemiGround: "#28041a",
+    skylineFar: "#3a0a3a",
+    skylineNear: "#5a1a4a",
+  },
+  {
+    id: "solar",
+    name: "Solar Drift",
+    bg: "#1a0e02",
+    fog: "#3a1a04",
+    fogNear: 28,
+    fogFar: 230,
+    sky: "#1a0e02",
+    glowA: "#ffd400",
+    glowB: "#ff7a00",
+    glowC: "#ff5722",
+    asphalt: "#180c02",
+    curb: "#ffd400",
+    dashEm: "#ffeacf",
+    buildingPalette: ["#3a1a04", "#28100a", "#1a0a04", "#2a1a06", "#3a2008"],
+    neonColors: ["#ffd400", "#ff7a00", "#ff5722", "#facc15", "#ffeacf"],
+    archA: "#ffd400",
+    archB: "#ff7a00",
+    ambient: "#ffa040",
+    directional: "#ffd070",
+    hemiSky: "#ffd400",
+    hemiGround: "#1a0e02",
+    skylineFar: "#5a200a",
+    skylineNear: "#3a1a06",
+  },
+  {
+    id: "void",
+    name: "Void Run",
+    bg: "#000000",
+    fog: "#0a0a0a",
+    fogNear: 30,
+    fogFar: 250,
+    sky: "#000000",
+    glowA: "#ffffff",
+    glowB: "#cfeaff",
+    glowC: "#a8a8ff",
+    asphalt: "#000000",
+    curb: "#ffffff",
+    dashEm: "#ffffff",
+    buildingPalette: ["#0a0a0a", "#1a1a1a", "#050505", "#101010", "#080808"],
+    neonColors: ["#ffffff", "#cfeaff", "#dde7ff", "#a8a8ff", "#cccccc"],
+    archA: "#ffffff",
+    archB: "#cfeaff",
+    ambient: "#a8a8ff",
+    directional: "#ffffff",
+    hemiSky: "#ffffff",
+    hemiGround: "#000000",
+    skylineFar: "#1a1a2a",
+    skylineNear: "#0a0a18",
+  },
+  {
+    id: "emerald",
+    name: "Emerald Strip",
+    bg: "#02180a",
+    fog: "#063018",
+    fogNear: 30,
+    fogFar: 240,
+    sky: "#02180a",
+    glowA: "#10b981",
+    glowB: "#39ff14",
+    glowC: "#7ff7ff",
+    asphalt: "#03100a",
+    curb: "#10b981",
+    dashEm: "#5ef0b8",
+    buildingPalette: ["#063018", "#02200e", "#0a3020", "#04180a", "#0a2818"],
+    neonColors: ["#10b981", "#39ff14", "#7ff7ff", "#5ef0b8", "#22d3ee"],
+    archA: "#10b981",
+    archB: "#39ff14",
+    ambient: "#5fffaa",
+    directional: "#aaffce",
+    hemiSky: "#5ef0b8",
+    hemiGround: "#02180a",
+    skylineFar: "#0a4028",
+    skylineNear: "#0a3020",
+  },
+  {
+    id: "vapor",
+    name: "Vapor Ridge",
+    bg: "#0a0428",
+    fog: "#1a0a40",
+    fogNear: 32,
+    fogFar: 250,
+    sky: "#0a0428",
+    glowA: "#a855f7",
+    glowB: "#e879f9",
+    glowC: "#22d3ee",
+    asphalt: "#080418",
+    curb: "#a855f7",
+    dashEm: "#f0abfc",
+    buildingPalette: ["#1a0a40", "#28145a", "#0a0a30", "#180a30", "#20104a"],
+    neonColors: ["#a855f7", "#e879f9", "#7c3aed", "#22d3ee", "#f0abfc"],
+    archA: "#a855f7",
+    archB: "#22d3ee",
+    ambient: "#a070ff",
+    directional: "#d0a0ff",
+    hemiSky: "#e879f9",
+    hemiGround: "#0a0428",
+    skylineFar: "#1a0a50",
+    skylineNear: "#28145a",
+  },
+  {
+    id: "verde",
+    name: "Cyber Verde",
+    bg: "#04181a",
+    fog: "#08283a",
+    fogNear: 30,
+    fogFar: 240,
+    sky: "#04181a",
+    glowA: "#39ff14",
+    glowB: "#22d3ee",
+    glowC: "#7ff7ff",
+    asphalt: "#03121a",
+    curb: "#39ff14",
+    dashEm: "#7ff7ff",
+    buildingPalette: ["#08283a", "#04202a", "#0a2030", "#062a3a", "#0a3040"],
+    neonColors: ["#39ff14", "#22d3ee", "#7ff7ff", "#10b981", "#caff70"],
+    archA: "#22d3ee",
+    archB: "#39ff14",
+    ambient: "#60dcd0",
+    directional: "#a0e8ff",
+    hemiSky: "#7ff7ff",
+    hemiGround: "#04181a",
+    skylineFar: "#0a3050",
+    skylineNear: "#0a3a50",
+  },
+];
+
+const ROUTES_BY_ID: Record<string, Route> = Object.fromEntries(
+  ROUTES.map((r) => [r.id, r]),
+);
+
 interface SharedRefs {
   input: React.MutableRefObject<InputState>;
   speedRef: React.MutableRefObject<number>;
@@ -375,6 +660,7 @@ interface SharedRefs {
   crashedRef: React.MutableRefObject<boolean>;
   modeRef: React.MutableRefObject<ModeConfig>;
   carRef: React.MutableRefObject<Car>;
+  routeRef: React.MutableRefObject<Route>;
   driftScoreRef: React.MutableRefObject<number>;
   // Power-up state
   shieldRef: React.MutableRefObject<number>; // # of shield charges
@@ -1115,38 +1401,38 @@ const PlayerCar = ({ refs, car }: { refs: SharedRefs; car: Car }) => {
 };
 
 // ---------- Road (recycled segments) ----------
-const Road = ({ refs }: { refs: SharedRefs }) => {
+const Road = ({ refs, route }: { refs: SharedRefs; route: Route }) => {
   const segGroup = useRef<THREE.Group>(null);
   const dashGroup = useRef<THREE.Group>(null);
   const NUM_DASHES = 80;
 
-  // Shared materials
+  // Shared materials (rebuilt when route changes)
   const asphaltMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: "#070710",
+        color: route.asphalt,
         roughness: 0.95,
         metalness: 0.1,
       }),
-    [],
+    [route],
   );
   const curbMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: "#00f6ff",
-        emissive: "#00f6ff",
+        color: route.curb,
+        emissive: route.curb,
         emissiveIntensity: 1.8,
       }),
-    [],
+    [route],
   );
   const dashMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
         color: "#ffffff",
-        emissive: "#ffd6ff",
+        emissive: route.dashEm,
         emissiveIntensity: 1.2,
       }),
-    [],
+    [route],
   );
 
   const segments = useMemo(
@@ -1284,10 +1570,11 @@ type BuildingDatum = {
   windowRows: number;
 };
 
-const palette = ["#1a1040", "#280a3a", "#0a0a30", "#150a3a", "#1f0a30"];
-const neonColors = ["#00f6ff", "#ff2bd1", "#9b30ff", "#ffe600", "#6effaa"];
-
-function buildBuildingData(seedZ: number): BuildingDatum {
+function buildBuildingData(
+  seedZ: number,
+  palette: string[],
+  neonColors: string[],
+): BuildingDatum {
   const side: -1 | 1 = Math.random() > 0.5 ? -1 : 1;
   const width = 6 + Math.random() * 8;
   const depth = 6 + Math.random() * 10;
@@ -1374,17 +1661,22 @@ const Building = ({ data }: { data: BuildingDatum }) => {
   );
 };
 
-const Buildings = ({ refs }: { refs: SharedRefs }) => {
+const Buildings = ({ refs, route }: { refs: SharedRefs; route: Route }) => {
   const groupRef = useRef<THREE.Group>(null);
+  // Re-generate the building set each time route changes (component is keyed by route.id in <Scene>)
   const buildingsRef = useRef<BuildingDatum[]>([]);
+  const routeIdRef = useRef<string>("");
 
-  if (buildingsRef.current.length === 0) {
-    // initial set spread across length
+  if (buildingsRef.current.length === 0 || routeIdRef.current !== route.id) {
+    buildingsRef.current = [];
     let z = -120;
     for (let i = 0; i < 60; i++) {
-      buildingsRef.current.push(buildBuildingData(z));
+      buildingsRef.current.push(
+        buildBuildingData(z, route.buildingPalette, route.neonColors),
+      );
       z += 12 + Math.random() * 8;
     }
+    routeIdRef.current = route.id;
   }
 
   useFrame(() => {
@@ -1401,7 +1693,11 @@ const Buildings = ({ refs }: { refs: SharedRefs }) => {
       if (localZ < -BUILDING_RECYCLE) {
         // farthest forward
         const maxZ = Math.max(...buildingsRef.current.map((b) => b.z));
-        const newData = buildBuildingData(maxZ + 10 + Math.random() * 10);
+        const newData = buildBuildingData(
+          maxZ + 10 + Math.random() * 10,
+          route.buildingPalette,
+          route.neonColors,
+        );
         buildingsRef.current[i] = newData;
       }
     });
@@ -1417,7 +1713,7 @@ const Buildings = ({ refs }: { refs: SharedRefs }) => {
 };
 
 // ---------- Distant skyline silhouette ----------
-const DistantSkyline = () => {
+const DistantSkyline = ({ route }: { route: Route }) => {
   const skylineL = useMemo(() => {
     const arr: { h: number; w: number; x: number }[] = [];
     let cur = -300;
@@ -1446,8 +1742,8 @@ const DistantSkyline = () => {
           <mesh key={`l-${i}`} position={[b.x, b.h / 2, 0]}>
             <boxGeometry args={[b.w, b.h, 2]} />
             <meshStandardMaterial
-              color={"#06031a"}
-              emissive={"#3a0a52"}
+              color={route.bg}
+              emissive={route.skylineFar}
               emissiveIntensity={0.5}
             />
           </mesh>
@@ -1458,8 +1754,8 @@ const DistantSkyline = () => {
           <mesh key={`r-${i}`} position={[b.x * 0.8, b.h / 2.2, 0]}>
             <boxGeometry args={[b.w * 0.7, b.h * 0.85, 2]} />
             <meshStandardMaterial
-              color={"#070420"}
-              emissive={"#0a3050"}
+              color={route.bg}
+              emissive={route.skylineNear}
               emissiveIntensity={0.45}
             />
           </mesh>
@@ -1470,19 +1766,19 @@ const DistantSkyline = () => {
 };
 
 // ---------- Sky / horizon glow ----------
-const Sky = () => {
+const Sky = ({ route }: { route: Route }) => {
   return (
     <group>
       {/* Skydome */}
       <mesh>
         <sphereGeometry args={[500, 32, 16]} />
-        <meshBasicMaterial side={THREE.BackSide} color={"#04031a"} />
+        <meshBasicMaterial side={THREE.BackSide} color={route.sky} />
       </mesh>
       {/* Horizon sun glow */}
       <mesh position={[0, 30, -300]}>
         <planeGeometry args={[400, 200]} />
         <meshBasicMaterial
-          color={"#ff2bd1"}
+          color={route.glowA}
           transparent
           opacity={0.18}
           blending={THREE.AdditiveBlending}
@@ -1492,7 +1788,7 @@ const Sky = () => {
       <mesh position={[0, 8, -290]}>
         <planeGeometry args={[600, 80]} />
         <meshBasicMaterial
-          color={"#9b30ff"}
+          color={route.glowB}
           transparent
           opacity={0.22}
           blending={THREE.AdditiveBlending}
@@ -1502,7 +1798,7 @@ const Sky = () => {
       <mesh position={[0, 2, -280]}>
         <planeGeometry args={[800, 30]} />
         <meshBasicMaterial
-          color={"#00f6ff"}
+          color={route.glowC}
           transparent
           opacity={0.35}
           blending={THREE.AdditiveBlending}
@@ -2253,19 +2549,19 @@ const GameLogic = ({ refs }: { refs: SharedRefs }) => {
 };
 
 // ---------- Lighting + fog ----------
-const Lights = () => {
+const Lights = ({ route }: { route: Route }) => {
   return (
     <>
-      <ambientLight intensity={0.35} color={"#7080ff"} />
+      <ambientLight intensity={0.35} color={route.ambient} />
       <directionalLight
-        color={"#9bb0ff"}
+        color={route.directional}
         position={[20, 40, -10]}
         intensity={0.6}
         castShadow={false}
       />
       <hemisphereLight
-        color={"#ff80e0"}
-        groundColor={"#0a0030"}
+        color={route.hemiSky}
+        groundColor={route.hemiGround}
         intensity={0.45}
       />
     </>
@@ -2635,17 +2931,17 @@ const PostFX = () => {
 };
 
 // ---------- Overhead neon arches you fly through ----------
-const NeonArches = ({ refs }: { refs: SharedRefs }) => {
+const NeonArches = ({ refs, route }: { refs: SharedRefs; route: Route }) => {
   const NUM = 4;
   const SPACING = 140;
   const arches = useMemo(() => {
     return new Array(NUM).fill(0).map((_, i) => ({
       z: i * SPACING + 40,
-      colorA: i % 2 === 0 ? "#00f6ff" : "#ff2bd1",
-      colorB: i % 2 === 0 ? "#ff2bd1" : "#00f6ff",
+      colorA: i % 2 === 0 ? route.archA : route.archB,
+      colorB: i % 2 === 0 ? route.archB : route.archA,
       phase: Math.random() * Math.PI * 2,
     }));
-  }, []);
+  }, [route]);
   const groupRefs = useRef<THREE.Group[]>([]);
   const matRefs = useRef<THREE.MeshBasicMaterial[]>([]);
   useFrame((state) => {
@@ -2909,19 +3205,27 @@ const BoostTrail = ({ refs }: { refs: SharedRefs }) => {
 };
 
 // ---------- Top-level Scene ----------
-const Scene = ({ refs, car }: { refs: SharedRefs; car: Car }) => {
+const Scene = ({
+  refs,
+  car,
+  route,
+}: {
+  refs: SharedRefs;
+  car: Car;
+  route: Route;
+}) => {
   return (
     <>
-      <fog attach="fog" args={["#0a0420", 30, 240]} />
-      <color attach="background" args={["#04031a"]} />
-      <Lights />
+      <fog attach="fog" args={[route.fog, route.fogNear, route.fogFar]} />
+      <color attach="background" args={[route.bg]} />
+      <Lights route={route} />
       <LightningStorm />
-      <Sky />
-      <DistantSkyline />
+      <Sky key={`sky-${route.id}`} route={route} />
+      <DistantSkyline key={`sl-${route.id}`} route={route} />
       <NeonGrid refs={refs} />
-      <Road refs={refs} />
-      <Buildings refs={refs} />
-      <NeonArches refs={refs} />
+      <Road key={`rd-${route.id}`} refs={refs} route={route} />
+      <Buildings key={`bd-${route.id}`} refs={refs} route={route} />
+      <NeonArches key={`na-${route.id}`} refs={refs} route={route} />
       <Holograms refs={refs} />
       <Drones refs={refs} />
       <Embers refs={refs} />
@@ -2963,6 +3267,8 @@ const HUD = ({
   onSelectMode,
   carId,
   onSelectCar,
+  routeId,
+  onSelectRoute,
 }: {
   state: GameState;
   speedRef: React.MutableRefObject<number>;
@@ -2987,6 +3293,8 @@ const HUD = ({
   onSelectMode: (m: GameMode) => void;
   carId: string;
   onSelectCar: (id: string) => void;
+  routeId: string;
+  onSelectRoute: (id: string) => void;
 }) => {
   const selectedCar = CARS_BY_ID[carId] ?? CARS[0];
   const carIndex = Math.max(
@@ -3000,6 +3308,19 @@ const HUD = ({
   const goNextCar = () => {
     const i = (carIndex + 1) % CARS.length;
     onSelectCar(CARS[i].id);
+  };
+  const selectedRoute = ROUTES_BY_ID[routeId] ?? ROUTES[0];
+  const routeIndex = Math.max(
+    0,
+    ROUTES.findIndex((r) => r.id === selectedRoute.id),
+  );
+  const goPrevRoute = () => {
+    const i = (routeIndex - 1 + ROUTES.length) % ROUTES.length;
+    onSelectRoute(ROUTES[i].id);
+  };
+  const goNextRoute = () => {
+    const i = (routeIndex + 1) % ROUTES.length;
+    onSelectRoute(ROUTES[i].id);
   };
   const speedEl = useRef<HTMLDivElement>(null);
   const distEl = useRef<HTMLDivElement>(null);
@@ -3683,6 +4004,134 @@ const HUD = ({
               </div>
             </div>
 
+            {/* ---------- Route selector ---------- */}
+            <div className="mt-6">
+              <div
+                className="text-[10px] tracking-[0.5em] opacity-80 mb-2"
+                style={{
+                  color: selectedRoute.archA,
+                  textShadow: `0 0 6px ${selectedRoute.archA}`,
+                }}
+              >
+                SELECT ROUTE
+              </div>
+              <div
+                className="glass rounded-xl p-3 flex items-center gap-3"
+                style={{
+                  border: `1px solid ${selectedRoute.archA}55`,
+                  boxShadow: `0 0 18px ${selectedRoute.archA}33, inset 0 0 18px ${selectedRoute.archA}1a`,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={goPrevRoute}
+                  className="px-3 py-2 rounded-md font-bold pointer-events-auto"
+                  style={{
+                    color: selectedRoute.archA,
+                    background: "rgba(0,0,0,0.35)",
+                    border: `1px solid ${selectedRoute.archA}55`,
+                    textShadow: `0 0 6px ${selectedRoute.archA}`,
+                  }}
+                  aria-label="Previous route"
+                >
+                  ◀
+                </button>
+
+                <div className="flex-1 min-w-0">
+                  {/* Route name + index */}
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div
+                      className="text-base sm:text-lg font-bold tracking-[0.2em] truncate"
+                      style={{
+                        color: selectedRoute.archA,
+                        textShadow: `0 0 8px ${selectedRoute.archA}`,
+                        fontFamily: "Orbitron, sans-serif",
+                      }}
+                    >
+                      {selectedRoute.name.toUpperCase()}
+                    </div>
+                    <div className="text-[10px] tracking-[0.3em] opacity-70 flex-shrink-0">
+                      {String(routeIndex + 1).padStart(2, "0")} /{" "}
+                      {String(ROUTES.length).padStart(2, "0")}
+                    </div>
+                  </div>
+
+                  {/* Route palette swatches: sky · curb · arch · 2 neon */}
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    {[
+                      selectedRoute.sky,
+                      selectedRoute.curb,
+                      selectedRoute.archA,
+                      selectedRoute.neonColors[0],
+                      selectedRoute.neonColors[1] ?? selectedRoute.neonColors[0],
+                    ].map((col, i) => (
+                      <span
+                        key={i}
+                        className="inline-block w-3 h-3 rounded-sm"
+                        style={{
+                          background: col,
+                          boxShadow: `0 0 6px ${col}`,
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Mini horizon preview band */}
+                  <div
+                    className="mt-2 h-3 rounded-sm overflow-hidden"
+                    style={{
+                      background: `linear-gradient(to bottom, ${selectedRoute.sky} 0%, ${selectedRoute.glowA} 55%, ${selectedRoute.glowB} 78%, ${selectedRoute.glowC} 100%)`,
+                      boxShadow: `inset 0 0 6px ${selectedRoute.archA}55`,
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={goNextRoute}
+                  className="px-3 py-2 rounded-md font-bold pointer-events-auto"
+                  style={{
+                    color: selectedRoute.archA,
+                    background: "rgba(0,0,0,0.35)",
+                    border: `1px solid ${selectedRoute.archA}55`,
+                    textShadow: `0 0 6px ${selectedRoute.archA}`,
+                  }}
+                  aria-label="Next route"
+                >
+                  ▶
+                </button>
+              </div>
+
+              {/* Route dot strip */}
+              <div className="flex items-center justify-center gap-1.5 mt-2 flex-wrap">
+                {ROUTES.map((r, i) => {
+                  const active = r.id === selectedRoute.id;
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => onSelectRoute(r.id)}
+                      className="pointer-events-auto rounded-full transition-all"
+                      title={r.name}
+                      style={{
+                        width: active ? 12 : 8,
+                        height: active ? 12 : 8,
+                        background: r.archA,
+                        boxShadow: active
+                          ? `0 0 8px ${r.archA}, 0 0 14px ${r.archA}`
+                          : `0 0 4px ${r.archA}88`,
+                        opacity: active ? 1 : 0.55,
+                        border: active
+                          ? `1px solid ${r.archB}`
+                          : "1px solid transparent",
+                      }}
+                      aria-label={`Select ${r.name} (route ${i + 1})`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
             <button className="menu-btn mt-6" onClick={onStart}>
               ▶ Start Race
             </button>
@@ -3848,6 +4297,16 @@ export default function Game() {
     return CARS[0].id;
   });
   const selectedCar = CARS_BY_ID[carId] ?? CARS[0];
+  const [routeId, setRouteId] = useState<string>(() => {
+    try {
+      const v = localStorage.getItem("lucidex.route");
+      if (v && ROUTES_BY_ID[v]) return v;
+    } catch {
+      /* noop */
+    }
+    return ROUTES[0].id;
+  });
+  const selectedRoute = ROUTES_BY_ID[routeId] ?? ROUTES[0];
 
   // Shared refs (mutable, no React re-renders)
   const inputRef = useRef<InputState>({ steer: 0, drift: false, nitro: false });
@@ -3862,6 +4321,7 @@ export default function Game() {
   const nitroPrevRef = useRef(false);
   const modeRef = useRef<ModeConfig>(MODE_CONFIGS.medium);
   const carRef = useRef<Car>(selectedCar);
+  const routeRef = useRef<Route>(selectedRoute);
   const driftScoreRef = useRef(0);
 
   // Keep carRef live with the latest selection (used by GameLogic for stats)
@@ -3874,8 +4334,21 @@ export default function Game() {
     }
   }, [selectedCar]);
 
+  // Keep routeRef live + persist
+  useEffect(() => {
+    routeRef.current = selectedRoute;
+    try {
+      localStorage.setItem("lucidex.route", selectedRoute.id);
+    } catch {
+      /* noop */
+    }
+  }, [selectedRoute]);
+
   const onSelectCar = useCallback((id: string) => {
     if (CARS_BY_ID[id]) setCarId(id);
+  }, []);
+  const onSelectRoute = useCallback((id: string) => {
+    if (ROUTES_BY_ID[id]) setRouteId(id);
   }, []);
   // Power-up + combo state refs
   const shieldRef = useRef(0);
@@ -4182,6 +4655,7 @@ export default function Game() {
     crashedRef,
     modeRef,
     carRef,
+    routeRef,
     driftScoreRef,
     shieldRef,
     multiplierTimerRef,
@@ -4208,7 +4682,7 @@ export default function Game() {
         frameloop={state === "playing" ? "always" : "demand"}
       >
         <Suspense fallback={null}>
-          <Scene refs={refs} car={selectedCar} />
+          <Scene refs={refs} car={selectedCar} route={selectedRoute} />
         </Suspense>
       </Canvas>
 
@@ -4241,6 +4715,11 @@ export default function Game() {
         onSelectCar={(id) => {
           audioRef.current?.triggerClick();
           onSelectCar(id);
+        }}
+        routeId={routeId}
+        onSelectRoute={(id) => {
+          audioRef.current?.triggerClick();
+          onSelectRoute(id);
         }}
       />
     </div>
