@@ -122,7 +122,17 @@ interface SharedRefs {
   crashedRef: React.MutableRefObject<boolean>;
   modeRef: React.MutableRefObject<ModeConfig>;
   driftScoreRef: React.MutableRefObject<number>;
+  // Power-up state
+  shieldRef: React.MutableRefObject<number>; // # of shield charges
+  multiplierTimerRef: React.MutableRefObject<number>; // seconds remaining of 2x
+  comboRef: React.MutableRefObject<number>; // current near-miss combo count
+  comboTimerRef: React.MutableRefObject<number>; // seconds since last near miss
+  comboPulseRef: React.MutableRefObject<number>; // 0..1, decays — used for HUD flash
+  pickupTakenRef: React.MutableRefObject<{ kind: PickupKind | null; pulse: number }>;
   onCrash: () => void;
+  onPickup: (kind: PickupKind) => void;
+  onNearMiss: (combo: number) => void;
+  onShieldAbsorb: () => void;
 }
 
 // ---------- Audio system (synthesized, no external files) ----------
@@ -137,9 +147,14 @@ interface AudioApi {
   triggerCrash: () => void;
   triggerClick: () => void;
   triggerStart: () => void;
+  triggerPickup: (kind: PickupKind) => void;
+  triggerNearMiss: (combo: number) => void;
+  triggerShield: () => void;
   setMuted: (m: boolean) => void;
   isMuted: () => boolean;
 }
+
+type PickupKind = "nitro" | "multiplier" | "shield";
 
 function buildWhiteNoiseBuffer(ctx: AudioContext, seconds = 2) {
   const sampleRate = ctx.sampleRate;
@@ -461,6 +476,120 @@ function createAudio(): AudioApi {
     rev.stop(t + 1.25);
   };
 
+  const triggerPickup = (kind: PickupKind) => {
+    if (muted) return;
+    const t = ctx.currentTime;
+    // Tonal arpeggio per pickup kind for clear feedback
+    const palette: Record<PickupKind, number[]> = {
+      nitro: [880, 1175, 1568],     // bright cyan-feel: A5, D6, G6
+      multiplier: [988, 1244, 1865], // yellow zing: B5, D#6, A#6
+      shield: [659, 880, 1108],     // warm pink: E5, A5, C#6
+    };
+    const notes = palette[kind];
+    notes.forEach((f, i) => {
+      const o = ctx.createOscillator();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(f, t + i * 0.045);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t + i * 0.045);
+      g.gain.linearRampToValueAtTime(0.22, t + i * 0.045 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.045 + 0.32);
+      const flt = ctx.createBiquadFilter();
+      flt.type = "lowpass";
+      flt.frequency.value = 4800;
+      o.connect(flt);
+      flt.connect(g);
+      g.connect(master);
+      o.start(t + i * 0.045);
+      o.stop(t + i * 0.045 + 0.36);
+    });
+    // Soft sparkle: quick filtered noise
+    const n = ctx.createBufferSource();
+    n.buffer = noiseBuffer;
+    const nf = ctx.createBiquadFilter();
+    nf.type = "highpass";
+    nf.frequency.value = 3200;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0, t);
+    ng.gain.linearRampToValueAtTime(0.18, t + 0.02);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    n.connect(nf);
+    nf.connect(ng);
+    ng.connect(master);
+    n.start(t);
+    n.stop(t + 0.3);
+  };
+
+  const triggerNearMiss = (combo: number) => {
+    if (muted) return;
+    const t = ctx.currentTime;
+    // Whoosh that gets a touch brighter as combo climbs
+    const c = Math.min(10, Math.max(1, combo));
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer;
+    const flt = ctx.createBiquadFilter();
+    flt.type = "bandpass";
+    flt.frequency.setValueAtTime(900 + c * 120, t);
+    flt.frequency.exponentialRampToValueAtTime(2200 + c * 200, t + 0.18);
+    flt.Q.value = 5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    src.connect(flt);
+    flt.connect(g);
+    g.connect(master);
+    src.start(t);
+    src.stop(t + 0.3);
+    // Tiny "tick" tone that rises with combo
+    const o = ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(660 + c * 50, t);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0, t);
+    og.gain.linearRampToValueAtTime(0.1, t + 0.01);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    o.connect(og);
+    og.connect(master);
+    o.start(t);
+    o.stop(t + 0.2);
+  };
+
+  const triggerShield = () => {
+    if (muted) return;
+    const t = ctx.currentTime;
+    // Glassy descending shimmer for shield absorbing a hit
+    [1760, 1320, 990].forEach((f, i) => {
+      const o = ctx.createOscillator();
+      o.type = "sine";
+      o.frequency.setValueAtTime(f, t + i * 0.04);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t + i * 0.04);
+      g.gain.linearRampToValueAtTime(0.28, t + i * 0.04 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.04 + 0.55);
+      o.connect(g);
+      g.connect(master);
+      o.start(t + i * 0.04);
+      o.stop(t + i * 0.04 + 0.6);
+    });
+    // Bright noise burst
+    const n = ctx.createBufferSource();
+    n.buffer = noiseBuffer;
+    const nf = ctx.createBiquadFilter();
+    nf.type = "bandpass";
+    nf.frequency.value = 2400;
+    nf.Q.value = 2;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0, t);
+    ng.gain.linearRampToValueAtTime(0.32, t + 0.01);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    n.connect(nf);
+    nf.connect(ng);
+    ng.connect(master);
+    n.start(t);
+    n.stop(t + 0.55);
+  };
+
   const resume = () => {
     if (ctx.state === "suspended") void ctx.resume();
   };
@@ -479,6 +608,9 @@ function createAudio(): AudioApi {
     triggerCrash,
     triggerClick,
     triggerStart,
+    triggerPickup,
+    triggerNearMiss,
+    triggerShield,
     setMuted,
     isMuted,
   };
@@ -1220,6 +1352,198 @@ const Stars = () => {
   );
 };
 
+// ---------- Pickups (collectible power-ups) ----------
+type Pickup = {
+  kind: PickupKind;
+  laneIndex: number;
+  z: number;
+  alive: boolean;
+};
+
+const MAX_PICKUPS = 4;
+const PICKUP_SPAWN_INTERVAL = 4.2; // seconds between spawn attempts
+const PICKUP_RECYCLE = 240;
+// Color per pickup kind for materials + HUD
+const PICKUP_COLORS: Record<PickupKind, string> = {
+  nitro: "#7ff7ff",
+  multiplier: "#ffe600",
+  shield: "#ff2bd1",
+};
+
+const PickupMesh = ({
+  pickupRef,
+}: {
+  pickupRef: React.MutableRefObject<Pickup>;
+}) => {
+  const groupRef = useRef<THREE.Group>(null);
+  const haloRef = useRef<THREE.Mesh>(null);
+
+  useFrame((state) => {
+    const g = groupRef.current;
+    if (!g) return;
+    g.visible = pickupRef.current.alive;
+    if (!pickupRef.current.alive) return;
+    const t = state.clock.elapsedTime;
+    g.rotation.y = t * 2.4;
+    g.position.y = 1.4 + Math.sin(t * 3) * 0.12;
+    if (haloRef.current) {
+      const s = 1 + Math.sin(t * 4) * 0.08;
+      haloRef.current.scale.set(s, s, s);
+    }
+  });
+
+  const kind = pickupRef.current.kind;
+  const color = PICKUP_COLORS[kind];
+
+  return (
+    <group ref={groupRef}>
+      {/* Glowing halo ring (always present, color-coded) */}
+      <mesh ref={haloRef} rotation={[Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.85, 1.15, 28]} />
+        <meshBasicMaterial color={color} transparent opacity={0.75} side={THREE.DoubleSide} />
+      </mesh>
+      {/* Inner shape changes per pickup kind */}
+      {kind === "nitro" && (
+        <>
+          {/* Cyan octahedral fuel cell */}
+          <mesh>
+            <octahedronGeometry args={[0.5, 0]} />
+            <meshStandardMaterial
+              color={color}
+              emissive={color}
+              emissiveIntensity={2.4}
+              metalness={0.3}
+              roughness={0.25}
+            />
+          </mesh>
+        </>
+      )}
+      {kind === "multiplier" && (
+        <>
+          {/* Yellow x2 — torus star */}
+          <mesh>
+            <torusKnotGeometry args={[0.34, 0.13, 64, 8]} />
+            <meshStandardMaterial
+              color={color}
+              emissive={color}
+              emissiveIntensity={2.6}
+              metalness={0.4}
+              roughness={0.2}
+            />
+          </mesh>
+        </>
+      )}
+      {kind === "shield" && (
+        <>
+          {/* Pink shield orb */}
+          <mesh>
+            <icosahedronGeometry args={[0.55, 0]} />
+            <meshStandardMaterial
+              color={color}
+              emissive={color}
+              emissiveIntensity={2.2}
+              metalness={0.5}
+              roughness={0.2}
+            />
+          </mesh>
+        </>
+      )}
+      <pointLight color={color} intensity={3.2} distance={14} />
+    </group>
+  );
+};
+
+const Pickups = ({ refs }: { refs: SharedRefs }) => {
+  const groupRef = useRef<THREE.Group>(null);
+  const itemsRef = useRef<React.MutableRefObject<Pickup>[]>([]);
+  const lastSpawnRef = useRef(0);
+
+  if (itemsRef.current.length === 0) {
+    for (let i = 0; i < MAX_PICKUPS; i++) {
+      itemsRef.current.push({
+        current: {
+          kind: "nitro",
+          laneIndex: 0,
+          z: -9999,
+          alive: false,
+        },
+      });
+    }
+  }
+
+  useFrame((_, dt) => {
+    if (refs.crashedRef.current) return;
+    const dist = refs.distanceRef.current;
+    lastSpawnRef.current += dt;
+
+    // Spawn cadence
+    if (lastSpawnRef.current > PICKUP_SPAWN_INTERVAL) {
+      lastSpawnRef.current = 0;
+      const free = itemsRef.current.find((p) => !p.current.alive);
+      if (free) {
+        // Weighted kind selection: nitro 55%, multiplier 30%, shield 15%
+        const r = Math.random();
+        const kind: PickupKind =
+          r < 0.55 ? "nitro" : r < 0.85 ? "multiplier" : "shield";
+        free.current.kind = kind;
+        free.current.laneIndex = Math.floor(Math.random() * 4);
+        free.current.z = dist + 200 + Math.random() * 60;
+        free.current.alive = true;
+      }
+    }
+
+    // Update + recycle
+    itemsRef.current.forEach((p) => {
+      if (!p.current.alive) return;
+      const localZ = p.current.z - dist;
+      if (localZ < -PICKUP_RECYCLE * 0.1) p.current.alive = false;
+    });
+
+    // Apply transforms
+    if (groupRef.current) {
+      groupRef.current.children.forEach((child, i) => {
+        const p = itemsRef.current[i].current;
+        const targetX = LANE_X[p.laneIndex];
+        child.position.x = targetX;
+        child.position.z = p.z - dist;
+      });
+    }
+
+    // Pickup collision vs player
+    const px = refs.carXRef.current;
+    for (const p of itemsRef.current) {
+      if (!p.current.alive) continue;
+      const localZ = p.current.z - dist;
+      const cx = LANE_X[p.current.laneIndex];
+      if (Math.abs(localZ) < 2.0 && Math.abs(cx - px) < 1.4) {
+        const kind = p.current.kind;
+        p.current.alive = false;
+        if (kind === "nitro") {
+          refs.nitroRef.current = Math.min(100, refs.nitroRef.current + 35);
+        } else if (kind === "multiplier") {
+          // Stack up to 8 seconds
+          refs.multiplierTimerRef.current = Math.min(
+            8,
+            refs.multiplierTimerRef.current + 5,
+          );
+        } else if (kind === "shield") {
+          refs.shieldRef.current = Math.min(2, refs.shieldRef.current + 1);
+        }
+        refs.pickupTakenRef.current = { kind, pulse: 1 };
+        refs.onPickup(kind);
+      }
+    }
+  });
+
+  return (
+    <group ref={groupRef}>
+      {itemsRef.current.map((p, i) => (
+        <PickupMesh key={i} pickupRef={p} />
+      ))}
+    </group>
+  );
+};
+
 // ---------- Traffic ----------
 type TrafficCar = {
   laneIndex: number;
@@ -1227,6 +1551,7 @@ type TrafficCar = {
   speed: number; // m/s (oncoming = negative relative to player)
   color: string;
   alive: boolean;
+  passed: boolean; // tracked for near-miss scoring
 };
 
 const trafficColors = ["#ff2bd1", "#00f6ff", "#ffe600", "#6effaa", "#ff5050", "#ffffff"];
@@ -1368,6 +1693,7 @@ const Traffic = ({ refs }: { refs: SharedRefs }) => {
           speed: 0,
           color: trafficColors[Math.floor(Math.random() * trafficColors.length)],
           alive: false,
+          passed: false,
         },
       });
     }
@@ -1391,6 +1717,7 @@ const Traffic = ({ refs }: { refs: SharedRefs }) => {
         free.current.color =
           trafficColors[Math.floor(Math.random() * trafficColors.length)];
         free.current.alive = true;
+        free.current.passed = false;
       }
     }
 
@@ -1420,17 +1747,44 @@ const Traffic = ({ refs }: { refs: SharedRefs }) => {
       });
     }
 
-    // Collision detection vs player (only when not crashed)
+    // Collision + near-miss detection (only when not crashed)
     if (!refs.crashedRef.current) {
       const px = refs.carXRef.current;
       for (const c of carsRef.current) {
         if (!c.current.alive) continue;
         const localZ = c.current.z - dist;
         const cx = LANE_X[c.current.laneIndex];
-        if (Math.abs(localZ) < 2.0 && Math.abs(cx - px) < 1.6) {
-          refs.crashedRef.current = true;
-          refs.onCrash();
-          break;
+        const dx = Math.abs(cx - px);
+
+        // Hard collision
+        if (Math.abs(localZ) < 2.0 && dx < 1.6) {
+          if (refs.shieldRef.current > 0) {
+            // Shield absorbs the hit and vaporizes the traffic car
+            refs.shieldRef.current -= 1;
+            c.current.alive = false;
+            refs.onShieldAbsorb();
+          } else {
+            refs.crashedRef.current = true;
+            refs.onCrash();
+            break;
+          }
+        }
+
+        // Near-miss: counted once per car as it passes the player at close lateral
+        // distance but NOT inside the collision box. Window is just behind the
+        // player so the player has clearly committed to the gap.
+        if (
+          !c.current.passed &&
+          localZ < 0 &&
+          localZ > -3.5 &&
+          dx < 2.6 &&
+          dx >= 1.6
+        ) {
+          c.current.passed = true;
+          refs.comboRef.current += 1;
+          refs.comboTimerRef.current = 0;
+          refs.comboPulseRef.current = 1;
+          refs.onNearMiss(refs.comboRef.current);
         }
       }
     }
@@ -1510,9 +1864,25 @@ const CameraFollow = ({ refs }: { refs: SharedRefs }) => {
 };
 
 // ---------- Game logic driver (in-canvas) ----------
+// Combo resets after this many seconds without a new near-miss
+const COMBO_TIMEOUT = 3.0;
+
 const GameLogic = ({ refs }: { refs: SharedRefs }) => {
   useFrame((_, deltaRaw) => {
     const dt = Math.min(0.05, deltaRaw); // clamp dt for stability
+
+    // Decay HUD pulse refs (always)
+    refs.comboPulseRef.current = Math.max(
+      0,
+      refs.comboPulseRef.current - dt * 2.4,
+    );
+    if (refs.pickupTakenRef.current.pulse > 0) {
+      refs.pickupTakenRef.current.pulse = Math.max(
+        0,
+        refs.pickupTakenRef.current.pulse - dt * 1.6,
+      );
+    }
+
     if (refs.crashedRef.current) {
       // Decelerate during crash
       refs.speedRef.current = Math.max(
@@ -1527,6 +1897,23 @@ const GameLogic = ({ refs }: { refs: SharedRefs }) => {
         0.05,
       );
       return;
+    }
+
+    // Multiplier timer decay
+    if (refs.multiplierTimerRef.current > 0) {
+      refs.multiplierTimerRef.current = Math.max(
+        0,
+        refs.multiplierTimerRef.current - dt,
+      );
+    }
+
+    // Combo timeout — reset combo if no near-miss in COMBO_TIMEOUT seconds
+    if (refs.comboRef.current > 0) {
+      refs.comboTimerRef.current += dt;
+      if (refs.comboTimerRef.current > COMBO_TIMEOUT) {
+        refs.comboRef.current = 0;
+        refs.comboTimerRef.current = 0;
+      }
     }
 
     const input = refs.input.current;
@@ -1553,10 +1940,13 @@ const GameLogic = ({ refs }: { refs: SharedRefs }) => {
         refs.nitroRef.current + 24 * dt,
       );
     }
-    // Drift mode: track drift score (drift seconds × speed factor)
+    // Score multiplier (2x while pickup is active)
+    const scoreMul = refs.multiplierTimerRef.current > 0 ? 2 : 1;
+
+    // Drift mode: track drift score (drift seconds × speed factor × multiplier)
     if (cfg.driftScoring && drifting) {
       const sf = Math.max(0.4, refs.speedRef.current / MAX_SPEED);
-      refs.driftScoreRef.current += dt * 100 * sf;
+      refs.driftScoreRef.current += dt * 100 * sf * scoreMul;
     }
 
     // Target speed (mode-tuned)
@@ -1600,8 +1990,8 @@ const GameLogic = ({ refs }: { refs: SharedRefs }) => {
       drifting ? 0.18 : 0.12,
     );
 
-    // Distance traveled
-    refs.distanceRef.current += refs.speedRef.current * dt;
+    // Distance traveled (with score multiplier applied)
+    refs.distanceRef.current += refs.speedRef.current * dt * scoreMul;
   });
   return null;
 };
@@ -2280,6 +2670,7 @@ const Scene = ({ refs }: { refs: SharedRefs }) => {
       <Drones refs={refs} />
       <Embers refs={refs} />
       <Traffic refs={refs} />
+      <Pickups refs={refs} />
       <PlayerCar refs={refs} />
       <BoostTrail refs={refs} />
       <NitroShockwave refs={refs} />
@@ -2299,6 +2690,11 @@ const HUD = ({
   nitroRef,
   bestRef,
   driftScoreRef,
+  shieldRef,
+  multiplierTimerRef,
+  comboRef,
+  comboPulseRef,
+  pickupTakenRef,
   onStart,
   onRestart,
   isMobile,
@@ -2316,6 +2712,11 @@ const HUD = ({
   nitroRef: React.MutableRefObject<number>;
   bestRef: React.MutableRefObject<number>;
   driftScoreRef: React.MutableRefObject<number>;
+  shieldRef: React.MutableRefObject<number>;
+  multiplierTimerRef: React.MutableRefObject<number>;
+  comboRef: React.MutableRefObject<number>;
+  comboPulseRef: React.MutableRefObject<number>;
+  pickupTakenRef: React.MutableRefObject<{ kind: PickupKind | null; pulse: number }>;
   onStart: () => void;
   onRestart: () => void;
   isMobile: boolean;
@@ -2335,6 +2736,16 @@ const HUD = ({
   const bestEl = useRef<HTMLSpanElement>(null);
   const driftScoreEl = useRef<HTMLDivElement>(null);
   const finalDriftEl = useRef<HTMLSpanElement>(null);
+  // Power-up + combo HUD elements
+  const powerupsEl = useRef<HTMLDivElement>(null);
+  const shieldPillEl = useRef<HTMLDivElement>(null);
+  const shieldCountEl = useRef<HTMLSpanElement>(null);
+  const multiPillEl = useRef<HTMLDivElement>(null);
+  const multiBarEl = useRef<HTMLDivElement>(null);
+  const multiTimeEl = useRef<HTMLSpanElement>(null);
+  const comboEl = useRef<HTMLDivElement>(null);
+  const comboNumEl = useRef<HTMLSpanElement>(null);
+  const pickupFlashEl = useRef<HTMLDivElement>(null);
 
   const cfg = MODE_CONFIGS[mode];
   const isDriftMode = cfg.driftScoring;
@@ -2375,11 +2786,92 @@ const HUD = ({
           ? Math.round(bestRef.current).toLocaleString() + " PTS"
           : (bestRef.current / 1000).toFixed(2) + " KM";
       }
+
+      // ----- Power-up status pills -----
+      const shield = shieldRef.current;
+      const multi = multiplierTimerRef.current;
+      const combo = comboRef.current;
+      const cPulse = comboPulseRef.current;
+
+      // Shield pill: hidden when 0 charges
+      if (shieldPillEl.current) {
+        shieldPillEl.current.style.opacity = shield > 0 ? "1" : "0";
+        shieldPillEl.current.style.transform =
+          shield > 0 ? "translateY(0)" : "translateY(6px)";
+      }
+      if (shieldCountEl.current) {
+        shieldCountEl.current.textContent = shield > 1 ? `×${shield}` : "";
+      }
+
+      // Multiplier pill: hidden when timer is 0
+      if (multiPillEl.current) {
+        multiPillEl.current.style.opacity = multi > 0 ? "1" : "0";
+        multiPillEl.current.style.transform =
+          multi > 0 ? "translateY(0)" : "translateY(6px)";
+      }
+      if (multiBarEl.current) {
+        // 8s max; show drain bar
+        const pct = Math.min(100, (multi / 8) * 100);
+        multiBarEl.current.style.width = pct.toFixed(1) + "%";
+      }
+      if (multiTimeEl.current) {
+        multiTimeEl.current.textContent = multi > 0 ? multi.toFixed(1) + "s" : "";
+      }
+
+      // Combo counter — appears at 2+ near misses, scales/glows on pulse
+      if (comboEl.current) {
+        const visible = combo >= 2;
+        comboEl.current.style.opacity = visible ? "1" : "0";
+        const scale = visible ? 1 + cPulse * 0.35 : 0.85;
+        comboEl.current.style.transform = `translate(-50%, 0) scale(${scale.toFixed(3)})`;
+        const glow = 8 + cPulse * 26;
+        comboEl.current.style.textShadow = `0 0 ${glow}px #ff2bd1, 0 0 ${glow * 1.5}px #ff2bd1`;
+      }
+      if (comboNumEl.current) {
+        comboNumEl.current.textContent = "×" + combo;
+      }
+
+      // Pickup flash text near top of screen
+      const pk = pickupTakenRef.current;
+      if (pickupFlashEl.current) {
+        const p = pk.pulse;
+        pickupFlashEl.current.style.opacity = p > 0 ? p.toFixed(3) : "0";
+        pickupFlashEl.current.style.transform =
+          `translate(-50%, ${(1 - p) * -10}px) scale(${(1 + p * 0.18).toFixed(3)})`;
+        if (p > 0 && pk.kind) {
+          const labels: Record<PickupKind, string> = {
+            nitro: "+ NITRO",
+            multiplier: "× 2 SCORE",
+            shield: "SHIELD UP",
+          };
+          const colors: Record<PickupKind, string> = {
+            nitro: "#7ff7ff",
+            multiplier: "#ffe600",
+            shield: "#ff2bd1",
+          };
+          pickupFlashEl.current.textContent = labels[pk.kind];
+          pickupFlashEl.current.style.color = colors[pk.kind];
+          pickupFlashEl.current.style.textShadow = `0 0 12px ${colors[pk.kind]}, 0 0 24px ${colors[pk.kind]}`;
+        }
+      }
+
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [speedRef, distanceRef, nitroRef, bestRef, driftScoreRef, isDriftMode]);
+  }, [
+    speedRef,
+    distanceRef,
+    nitroRef,
+    bestRef,
+    driftScoreRef,
+    isDriftMode,
+    shieldRef,
+    multiplierTimerRef,
+    comboRef,
+    comboPulseRef,
+    pickupTakenRef,
+  ]);
 
   // Touch button handlers
   const press = useCallback(
@@ -2513,6 +3005,123 @@ const HUD = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Power-up status pills (under top-left distance card) */}
+      {state === "playing" && (
+        <div
+          ref={powerupsEl}
+          className="absolute left-3 top-[88px] flex flex-col gap-2"
+          style={{ pointerEvents: "none", zIndex: 40 }}
+        >
+          {/* Shield pill */}
+          <div
+            ref={shieldPillEl}
+            className="glass rounded-full px-3 py-1.5 flex items-center gap-2 transition-all duration-200"
+            style={{
+              opacity: 0,
+              borderColor: "rgba(255, 43, 209, 0.55)",
+              boxShadow: "0 0 14px rgba(255, 43, 209, 0.45)",
+            }}
+          >
+            <span style={{ fontSize: "16px" }}>🛡</span>
+            <span
+              className="text-[10px] tracking-[0.25em] font-bold"
+              style={{ color: "#ff2bd1", textShadow: "0 0 8px #ff2bd1" }}
+            >
+              SHIELD
+            </span>
+            <span
+              ref={shieldCountEl}
+              className="text-[11px] font-extrabold"
+              style={{ color: "#ff2bd1" }}
+            />
+          </div>
+          {/* Multiplier pill (with drain bar) */}
+          <div
+            ref={multiPillEl}
+            className="glass rounded-full px-3 py-1.5 flex items-center gap-2 transition-all duration-200"
+            style={{
+              opacity: 0,
+              minWidth: "150px",
+              borderColor: "rgba(255, 230, 0, 0.55)",
+              boxShadow: "0 0 14px rgba(255, 230, 0, 0.45)",
+            }}
+          >
+            <span
+              className="text-[12px] font-black tracking-[0.18em]"
+              style={{ color: "#ffe600", textShadow: "0 0 8px #ffe600" }}
+            >
+              ×2
+            </span>
+            <div
+              className="flex-1 h-1.5 rounded-full overflow-hidden"
+              style={{ background: "rgba(255,230,0,0.18)" }}
+            >
+              <div
+                ref={multiBarEl}
+                className="h-full rounded-full"
+                style={{
+                  background:
+                    "linear-gradient(90deg, #ffe600, #fff175)",
+                  boxShadow: "0 0 8px #ffe600",
+                  width: "0%",
+                  transition: "width 0.12s linear",
+                }}
+              />
+            </div>
+            <span
+              ref={multiTimeEl}
+              className="text-[10px] tabular-nums font-bold"
+              style={{ color: "#ffe600", minWidth: "32px", textAlign: "right" }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Combo counter — center-top, glows pink */}
+      {state === "playing" && (
+        <div
+          ref={comboEl}
+          className="absolute left-1/2 select-none"
+          style={{
+            top: "calc(50% - 80px)",
+            transform: "translate(-50%, 0) scale(0.85)",
+            opacity: 0,
+            color: "#ff2bd1",
+            fontFamily: "Orbitron, sans-serif",
+            fontWeight: 900,
+            fontSize: "44px",
+            letterSpacing: "0.08em",
+            textShadow: "0 0 12px #ff2bd1, 0 0 24px #ff2bd1",
+            transition: "opacity 0.18s ease",
+            pointerEvents: "none",
+            zIndex: 40,
+          }}
+        >
+          COMBO <span ref={comboNumEl}>×0</span>
+        </div>
+      )}
+
+      {/* Pickup flash text — appears briefly above the combo */}
+      {state === "playing" && (
+        <div
+          ref={pickupFlashEl}
+          className="absolute left-1/2 select-none"
+          style={{
+            top: "calc(50% - 140px)",
+            transform: "translate(-50%, 0)",
+            opacity: 0,
+            color: "#7ff7ff",
+            fontFamily: "Orbitron, sans-serif",
+            fontWeight: 900,
+            fontSize: "26px",
+            letterSpacing: "0.18em",
+            textShadow: "0 0 12px #7ff7ff",
+            pointerEvents: "none",
+            zIndex: 40,
+          }}
+        />
       )}
 
       {/* Bottom HUD: speedometer + nitro */}
@@ -2679,6 +3288,48 @@ const HUD = ({
               </div>
             </div>
 
+            {/* Pickups + combo legend */}
+            <div className="mt-4 glass rounded-lg p-3 text-left text-xs sm:text-sm">
+              <div className="neon-yellow font-bold tracking-widest mb-2">
+                PICKUPS &amp; COMBO
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-block w-3 h-3 rounded-full"
+                    style={{
+                      background: "#7ff7ff",
+                      boxShadow: "0 0 10px #7ff7ff",
+                    }}
+                  />
+                  <span style={{ color: "#7ff7ff" }}>NITRO refill</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-block w-3 h-3 rounded-full"
+                    style={{
+                      background: "#ffe600",
+                      boxShadow: "0 0 10px #ffe600",
+                    }}
+                  />
+                  <span style={{ color: "#ffe600" }}>×2 SCORE 5s</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-block w-3 h-3 rounded-full"
+                    style={{
+                      background: "#ff2bd1",
+                      boxShadow: "0 0 10px #ff2bd1",
+                    }}
+                  />
+                  <span style={{ color: "#ff2bd1" }}>SHIELD (+1 hit)</span>
+                </div>
+              </div>
+              <div className="mt-2 opacity-80">
+                Squeeze past traffic to chain near-miss COMBOs.
+              </div>
+            </div>
+
             {bestRef.current > 0 && (
               <div className="mt-6 text-xs tracking-[0.3em] neon-yellow opacity-90">
                 {isDriftMode ? "BEST DRIFT" : "BEST DISTANCE"} ·{" "}
@@ -2780,6 +3431,16 @@ export default function Game() {
   const nitroPrevRef = useRef(false);
   const modeRef = useRef<ModeConfig>(MODE_CONFIGS.medium);
   const driftScoreRef = useRef(0);
+  // Power-up + combo state refs
+  const shieldRef = useRef(0);
+  const multiplierTimerRef = useRef(0);
+  const comboRef = useRef(0);
+  const comboTimerRef = useRef(0);
+  const comboPulseRef = useRef(0);
+  const pickupTakenRef = useRef<{ kind: PickupKind | null; pulse: number }>({
+    kind: null,
+    pulse: 0,
+  });
 
   // Audio
   const audioRef = useAudioApi();
@@ -2965,6 +3626,13 @@ export default function Game() {
     crashedRef.current = false;
     topSpeedRef.current = BASE_SPEED * cfg.baseSpeedMul;
     driftScoreRef.current = 0;
+    // Reset all power-up + combo state on each race
+    shieldRef.current = 0;
+    multiplierTimerRef.current = 0;
+    comboRef.current = 0;
+    comboTimerRef.current = 0;
+    comboPulseRef.current = 0;
+    pickupTakenRef.current = { kind: null, pulse: 0 };
     inputRef.current = { steer: 0, drift: false, nitro: false };
     audioRef.current?.resume();
     audioRef.current?.triggerStart();
@@ -3017,6 +3685,23 @@ export default function Game() {
     restart();
   }, [audioRef, restart]);
 
+  // ---- Power-up + near-miss audio callbacks (pass-through to AudioApi) ----
+  const handlePickup = useCallback(
+    (kind: PickupKind) => {
+      audioRef.current?.triggerPickup(kind);
+    },
+    [audioRef],
+  );
+  const handleNearMiss = useCallback(
+    (combo: number) => {
+      audioRef.current?.triggerNearMiss(combo);
+    },
+    [audioRef],
+  );
+  const handleShieldAbsorb = useCallback(() => {
+    audioRef.current?.triggerShield();
+  }, [audioRef]);
+
   // Load best (per mode), and migrate the legacy distance key into "medium"
   useEffect(() => {
     try {
@@ -3049,7 +3734,16 @@ export default function Game() {
     crashedRef,
     modeRef,
     driftScoreRef,
+    shieldRef,
+    multiplierTimerRef,
+    comboRef,
+    comboTimerRef,
+    comboPulseRef,
+    pickupTakenRef,
     onCrash: handleCrash,
+    onPickup: handlePickup,
+    onNearMiss: handleNearMiss,
+    onShieldAbsorb: handleShieldAbsorb,
   };
 
   return (
@@ -3076,6 +3770,11 @@ export default function Game() {
         nitroRef={nitroRef}
         bestRef={bestRef}
         driftScoreRef={driftScoreRef}
+        shieldRef={shieldRef}
+        multiplierTimerRef={multiplierTimerRef}
+        comboRef={comboRef}
+        comboPulseRef={comboPulseRef}
+        pickupTakenRef={pickupTakenRef}
         onStart={handleStartClick}
         onRestart={handleRestartClick}
         isMobile={isMobile}
