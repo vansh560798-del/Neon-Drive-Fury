@@ -244,9 +244,10 @@ canvas {
 
 .touch-cluster {
   position: fixed;
-  bottom: max(20px, env(safe-area-inset-bottom));
+  bottom: calc(110px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: row;
+  align-items: flex-end;
   gap: 14px;
   pointer-events: auto;
   z-index: 60;
@@ -261,14 +262,21 @@ canvas {
   right: max(16px, env(safe-area-inset-right));
 }
 
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .touch-btn {
-    width: 72px;
-    height: 72px;
-    font-size: 11px;
+    width: 68px;
+    height: 68px;
+    font-size: 10px;
   }
   .touch-cluster {
     gap: 10px;
+    bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-height: 520px) {
+  .touch-cluster {
+    bottom: calc(88px + env(safe-area-inset-bottom));
   }
 }
 
