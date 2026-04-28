@@ -112,6 +112,259 @@ interface InputState {
   nitro: boolean;
 }
 
+// ---------- Car catalog ----------
+// Each car is a visual + light stat differentiator.
+// speedMul affects top/nitro speed (subtle: 0.94..1.10)
+// accelMul affects acceleration ramp (0.9..1.15)
+// gripMul affects steering responsiveness (0.92..1.15)
+interface Car {
+  id: string;
+  name: string;
+  body: string; // main chassis color
+  trim: string; // hood/spoiler accent (also rear bumper diffuser tint)
+  neon: string; // side strips + spoiler ridge
+  canopy: string; // canopy emissive
+  flameA: string; // primary nitro flame
+  flameB: string; // secondary nitro flame
+  underglow: string;
+  rim: string; // wheel rim color
+  speedMul: number;
+  accelMul: number;
+  gripMul: number;
+}
+
+const CARS: Car[] = [
+  {
+    id: "vortex",
+    name: "Vortex",
+    body: "#0a0a18",
+    trim: "#161028",
+    neon: "#ff2bd1",
+    canopy: "#00f6ff",
+    flameA: "#00f6ff",
+    flameB: "#ff2bd1",
+    underglow: "#ff2bd1",
+    rim: "#0a0a10",
+    speedMul: 1.0,
+    accelMul: 1.0,
+    gripMul: 1.0,
+  },
+  {
+    id: "phantom",
+    name: "Phantom",
+    body: "#1a0030",
+    trim: "#2a0050",
+    neon: "#a855f7",
+    canopy: "#c084fc",
+    flameA: "#a855f7",
+    flameB: "#7c3aed",
+    underglow: "#a855f7",
+    rim: "#150022",
+    speedMul: 1.04,
+    accelMul: 0.98,
+    gripMul: 1.02,
+  },
+  {
+    id: "blaze",
+    name: "Blaze",
+    body: "#2a0808",
+    trim: "#400000",
+    neon: "#ff5722",
+    canopy: "#ff9248",
+    flameA: "#ff7a00",
+    flameB: "#ffd400",
+    underglow: "#ff5722",
+    rim: "#200505",
+    speedMul: 1.08,
+    accelMul: 1.05,
+    gripMul: 0.94,
+  },
+  {
+    id: "frost",
+    name: "Frost",
+    body: "#0a1a2a",
+    trim: "#102540",
+    neon: "#7ff7ff",
+    canopy: "#bdf3ff",
+    flameA: "#7ff7ff",
+    flameB: "#ffffff",
+    underglow: "#7ff7ff",
+    rim: "#08111e",
+    speedMul: 0.98,
+    accelMul: 1.10,
+    gripMul: 1.08,
+  },
+  {
+    id: "viper",
+    name: "Viper",
+    body: "#02180a",
+    trim: "#063018",
+    neon: "#39ff14",
+    canopy: "#9eff7a",
+    flameA: "#39ff14",
+    flameB: "#7ff7ff",
+    underglow: "#39ff14",
+    rim: "#021008",
+    speedMul: 1.02,
+    accelMul: 1.06,
+    gripMul: 1.04,
+  },
+  {
+    id: "solaris",
+    name: "Solaris",
+    body: "#2a1c00",
+    trim: "#3a2a00",
+    neon: "#ffe600",
+    canopy: "#ffec5a",
+    flameA: "#ffe600",
+    flameB: "#ff7a00",
+    underglow: "#ffe600",
+    rim: "#1c1300",
+    speedMul: 1.06,
+    accelMul: 1.08,
+    gripMul: 0.96,
+  },
+  {
+    id: "spectre",
+    name: "Spectre",
+    body: "#080814",
+    trim: "#16162a",
+    neon: "#ffffff",
+    canopy: "#dde7ff",
+    flameA: "#ffffff",
+    flameB: "#7ff7ff",
+    underglow: "#dde7ff",
+    rim: "#06060e",
+    speedMul: 1.10,
+    accelMul: 0.94,
+    gripMul: 1.02,
+  },
+  {
+    id: "rogue",
+    name: "Rogue",
+    body: "#150010",
+    trim: "#28001f",
+    neon: "#ff007a",
+    canopy: "#ff5ab8",
+    flameA: "#ff007a",
+    flameB: "#a855f7",
+    underglow: "#ff007a",
+    rim: "#10000a",
+    speedMul: 1.05,
+    accelMul: 1.02,
+    gripMul: 1.00,
+  },
+  {
+    id: "tempest",
+    name: "Tempest",
+    body: "#001020",
+    trim: "#001a35",
+    neon: "#3b82f6",
+    canopy: "#7fb6ff",
+    flameA: "#3b82f6",
+    flameB: "#7ff7ff",
+    underglow: "#3b82f6",
+    rim: "#000a14",
+    speedMul: 1.03,
+    accelMul: 1.04,
+    gripMul: 1.06,
+  },
+  {
+    id: "halo",
+    name: "Halo",
+    body: "#180018",
+    trim: "#2a002a",
+    neon: "#f0abfc",
+    canopy: "#f8d4ff",
+    flameA: "#f0abfc",
+    flameB: "#ffffff",
+    underglow: "#f0abfc",
+    rim: "#100010",
+    speedMul: 0.96,
+    accelMul: 1.12,
+    gripMul: 1.10,
+  },
+  {
+    id: "onyx",
+    name: "Onyx",
+    body: "#000000",
+    trim: "#0a0a0a",
+    neon: "#22d3ee",
+    canopy: "#67e8f9",
+    flameA: "#22d3ee",
+    flameB: "#0ea5e9",
+    underglow: "#22d3ee",
+    rim: "#000000",
+    speedMul: 1.07,
+    accelMul: 1.00,
+    gripMul: 1.05,
+  },
+  {
+    id: "carbon",
+    name: "Carbon",
+    body: "#101010",
+    trim: "#1a1a1a",
+    neon: "#ff003c",
+    canopy: "#ff5577",
+    flameA: "#ff003c",
+    flameB: "#ff7a00",
+    underglow: "#ff003c",
+    rim: "#0a0a0a",
+    speedMul: 1.10,
+    accelMul: 1.05,
+    gripMul: 0.92,
+  },
+  {
+    id: "mirage",
+    name: "Mirage",
+    body: "#0a2818",
+    trim: "#103828",
+    neon: "#10b981",
+    canopy: "#5ef0b8",
+    flameA: "#10b981",
+    flameB: "#7ff7ff",
+    underglow: "#10b981",
+    rim: "#061a10",
+    speedMul: 1.00,
+    accelMul: 1.08,
+    gripMul: 1.08,
+  },
+  {
+    id: "neon",
+    name: "Neon",
+    body: "#180a28",
+    trim: "#26104a",
+    neon: "#e879f9",
+    canopy: "#f0abfc",
+    flameA: "#e879f9",
+    flameB: "#22d3ee",
+    underglow: "#e879f9",
+    rim: "#100620",
+    speedMul: 1.02,
+    accelMul: 1.06,
+    gripMul: 1.04,
+  },
+  {
+    id: "pulse",
+    name: "Pulse",
+    body: "#1a1a00",
+    trim: "#2a2800",
+    neon: "#facc15",
+    canopy: "#fde68a",
+    flameA: "#facc15",
+    flameB: "#ff5722",
+    underglow: "#facc15",
+    rim: "#101000",
+    speedMul: 1.04,
+    accelMul: 1.10,
+    gripMul: 0.98,
+  },
+];
+
+const CARS_BY_ID: Record<string, Car> = Object.fromEntries(
+  CARS.map((c) => [c.id, c]),
+);
+
 interface SharedRefs {
   input: React.MutableRefObject<InputState>;
   speedRef: React.MutableRefObject<number>;
@@ -121,6 +374,7 @@ interface SharedRefs {
   carXRef: React.MutableRefObject<number>;
   crashedRef: React.MutableRefObject<boolean>;
   modeRef: React.MutableRefObject<ModeConfig>;
+  carRef: React.MutableRefObject<Car>;
   driftScoreRef: React.MutableRefObject<number>;
   // Power-up state
   shieldRef: React.MutableRefObject<number>; // # of shield charges
@@ -670,7 +924,7 @@ function useEngineSync(
 }
 
 // ---------- Player Car (primitives, cyberpunk styled) ----------
-const PlayerCar = ({ refs }: { refs: SharedRefs }) => {
+const PlayerCar = ({ refs, car }: { refs: SharedRefs; car: Car }) => {
   const groupRef = useRef<THREE.Group>(null);
   const wheelsRef = useRef<THREE.Mesh[]>([]);
   const flame1Ref = useRef<THREE.Mesh>(null);
@@ -721,7 +975,7 @@ const PlayerCar = ({ refs }: { refs: SharedRefs }) => {
       {/* Underglow */}
       <pointLight
         ref={underglowRef}
-        color={"#ff2bd1"}
+        color={car.underglow}
         intensity={1.6}
         distance={6}
         position={[0, -0.3, 0]}
@@ -731,10 +985,10 @@ const PlayerCar = ({ refs }: { refs: SharedRefs }) => {
       <mesh castShadow position={[0, 0.45, 0]}>
         <boxGeometry args={[1.7, 0.45, 3.6]} />
         <meshStandardMaterial
-          color={"#0a0a18"}
+          color={car.body}
           metalness={0.9}
           roughness={0.18}
-          emissive={"#0e0a30"}
+          emissive={car.trim}
           emissiveIntensity={0.5}
         />
       </mesh>
@@ -742,7 +996,7 @@ const PlayerCar = ({ refs }: { refs: SharedRefs }) => {
       <mesh position={[0, 0.62, 0.95]} rotation={[-0.18, 0, 0]}>
         <boxGeometry args={[1.55, 0.1, 1.6]} />
         <meshStandardMaterial
-          color={"#0a0a18"}
+          color={car.body}
           metalness={0.9}
           roughness={0.2}
         />
@@ -755,7 +1009,7 @@ const PlayerCar = ({ refs }: { refs: SharedRefs }) => {
           metalness={0.6}
           roughness={0.05}
           envMapIntensity={1}
-          emissive={"#00f6ff"}
+          emissive={car.canopy}
           emissiveIntensity={0.18}
         />
       </mesh>
@@ -763,8 +1017,8 @@ const PlayerCar = ({ refs }: { refs: SharedRefs }) => {
       <mesh position={[0, 1.18, -0.3]}>
         <boxGeometry args={[0.18, 0.05, 1.2]} />
         <meshStandardMaterial
-          color={"#00f6ff"}
-          emissive={"#00f6ff"}
+          color={car.canopy}
+          emissive={car.canopy}
           emissiveIntensity={2.4}
         />
       </mesh>
@@ -773,8 +1027,8 @@ const PlayerCar = ({ refs }: { refs: SharedRefs }) => {
         <mesh key={x} position={[x, 0.45, 0]}>
           <boxGeometry args={[0.04, 0.06, 3.4]} />
           <meshStandardMaterial
-            color={"#ff2bd1"}
-            emissive={"#ff2bd1"}
+            color={car.neon}
+            emissive={car.neon}
             emissiveIntensity={3}
           />
         </mesh>
@@ -813,7 +1067,7 @@ const PlayerCar = ({ refs }: { refs: SharedRefs }) => {
       {/* Rear bumper diffuser */}
       <mesh position={[0, 0.25, -1.85]}>
         <boxGeometry args={[1.5, 0.15, 0.1]} />
-        <meshStandardMaterial color={"#161028"} metalness={0.9} roughness={0.4} />
+        <meshStandardMaterial color={car.trim} metalness={0.9} roughness={0.4} />
       </mesh>
       {/* Wheels */}
       {[
@@ -832,14 +1086,14 @@ const PlayerCar = ({ refs }: { refs: SharedRefs }) => {
           castShadow
         >
           <cylinderGeometry args={[0.32, 0.32, 0.28, 22]} />
-          <meshStandardMaterial color={"#0a0a10"} metalness={0.4} roughness={0.6} />
+          <meshStandardMaterial color={car.rim} metalness={0.4} roughness={0.6} />
         </mesh>
       ))}
       {/* Nitro flames */}
       <mesh ref={flame1Ref} position={[-0.4, 0.42, -2.05]} scale={[0.7, 0.7, 0.6]}>
         <coneGeometry args={[0.18, 1.2, 16]} />
         <meshBasicMaterial
-          color={"#00f6ff"}
+          color={car.flameA}
           transparent
           opacity={0}
           blending={THREE.AdditiveBlending}
@@ -849,7 +1103,7 @@ const PlayerCar = ({ refs }: { refs: SharedRefs }) => {
       <mesh ref={flame2Ref} position={[0.4, 0.42, -2.05]} scale={[0.7, 0.7, 0.6]}>
         <coneGeometry args={[0.18, 1.2, 16]} />
         <meshBasicMaterial
-          color={"#ff2bd1"}
+          color={car.flameB}
           transparent
           opacity={0}
           blending={THREE.AdditiveBlending}
@@ -1949,18 +2203,19 @@ const GameLogic = ({ refs }: { refs: SharedRefs }) => {
       refs.driftScoreRef.current += dt * 100 * sf * scoreMul;
     }
 
-    // Target speed (mode-tuned)
-    const modeMax = MAX_SPEED * cfg.speedMul;
-    const modeNitroMax = NITRO_MAX_SPEED * cfg.speedMul;
+    // Target speed (mode + car tuned)
+    const car = refs.carRef.current;
+    const modeMax = MAX_SPEED * cfg.speedMul * car.speedMul;
+    const modeNitroMax = NITRO_MAX_SPEED * cfg.speedMul * car.speedMul;
     let targetSpeed = modeMax;
     if (boosting) targetSpeed = modeNitroMax;
     if (drifting) targetSpeed = Math.min(targetSpeed, modeMax * 0.7);
 
-    // Approach target speed
+    // Approach target speed (car accelMul affects ramp)
     if (refs.speedRef.current < targetSpeed) {
       refs.speedRef.current = Math.min(
         targetSpeed,
-        refs.speedRef.current + ACCEL * dt * (boosting ? 1.6 : 1),
+        refs.speedRef.current + ACCEL * car.accelMul * dt * (boosting ? 1.6 : 1),
       );
     } else {
       const decel = drifting ? DRIFT_DECAY : ACCEL * 0.6;
@@ -1970,9 +2225,10 @@ const GameLogic = ({ refs }: { refs: SharedRefs }) => {
       );
     }
 
-    // Steering
+    // Steering (car gripMul affects responsiveness)
     const steerInput = input.steer;
-    const baseSteer = STEER_SPEED * (drifting ? DRIFT_STEER_BOOST : 1);
+    const baseSteer =
+      STEER_SPEED * car.gripMul * (drifting ? DRIFT_STEER_BOOST : 1);
     refs.carXRef.current += steerInput * baseSteer * dt;
     // clamp inside road
     refs.carXRef.current = Math.max(
@@ -2653,7 +2909,7 @@ const BoostTrail = ({ refs }: { refs: SharedRefs }) => {
 };
 
 // ---------- Top-level Scene ----------
-const Scene = ({ refs }: { refs: SharedRefs }) => {
+const Scene = ({ refs, car }: { refs: SharedRefs; car: Car }) => {
   return (
     <>
       <fog attach="fog" args={["#0a0420", 30, 240]} />
@@ -2671,7 +2927,7 @@ const Scene = ({ refs }: { refs: SharedRefs }) => {
       <Embers refs={refs} />
       <Traffic refs={refs} />
       <Pickups refs={refs} />
-      <PlayerCar refs={refs} />
+      <PlayerCar refs={refs} car={car} />
       <BoostTrail refs={refs} />
       <NitroShockwave refs={refs} />
       <SpeedLines refs={refs} />
@@ -2705,6 +2961,8 @@ const HUD = ({
   onToggleTouch,
   mode,
   onSelectMode,
+  carId,
+  onSelectCar,
 }: {
   state: GameState;
   speedRef: React.MutableRefObject<number>;
@@ -2727,7 +2985,22 @@ const HUD = ({
   onToggleTouch: () => void;
   mode: GameMode;
   onSelectMode: (m: GameMode) => void;
+  carId: string;
+  onSelectCar: (id: string) => void;
 }) => {
+  const selectedCar = CARS_BY_ID[carId] ?? CARS[0];
+  const carIndex = Math.max(
+    0,
+    CARS.findIndex((c) => c.id === selectedCar.id),
+  );
+  const goPrevCar = () => {
+    const i = (carIndex - 1 + CARS.length) % CARS.length;
+    onSelectCar(CARS[i].id);
+  };
+  const goNextCar = () => {
+    const i = (carIndex + 1) % CARS.length;
+    onSelectCar(CARS[i].id);
+  };
   const speedEl = useRef<HTMLDivElement>(null);
   const distEl = useRef<HTMLDivElement>(null);
   const nitroEl = useRef<HTMLDivElement>(null);
@@ -3262,6 +3535,154 @@ const HUD = ({
               </div>
             </div>
 
+            {/* ---------- Car selector ---------- */}
+            <div className="mt-6">
+              <div className="text-[10px] tracking-[0.5em] neon-pink opacity-80 mb-2">
+                SELECT CAR
+              </div>
+              <div
+                className="glass rounded-xl p-3 flex items-center gap-3"
+                style={{
+                  border: `1px solid ${selectedCar.neon}55`,
+                  boxShadow: `0 0 18px ${selectedCar.neon}33, inset 0 0 18px ${selectedCar.neon}1a`,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={goPrevCar}
+                  className="px-3 py-2 rounded-md font-bold pointer-events-auto"
+                  style={{
+                    color: selectedCar.neon,
+                    background: "rgba(0,0,0,0.35)",
+                    border: `1px solid ${selectedCar.neon}55`,
+                    textShadow: `0 0 6px ${selectedCar.neon}`,
+                  }}
+                  aria-label="Previous car"
+                >
+                  ◀
+                </button>
+
+                <div className="flex-1 min-w-0">
+                  {/* Car name + index */}
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div
+                      className="text-base sm:text-lg font-bold tracking-[0.2em] truncate"
+                      style={{
+                        color: selectedCar.neon,
+                        textShadow: `0 0 8px ${selectedCar.neon}`,
+                        fontFamily: "Orbitron, sans-serif",
+                      }}
+                    >
+                      {selectedCar.name.toUpperCase()}
+                    </div>
+                    <div className="text-[10px] tracking-[0.3em] opacity-70 flex-shrink-0">
+                      {String(carIndex + 1).padStart(2, "0")} /{" "}
+                      {String(CARS.length).padStart(2, "0")}
+                    </div>
+                  </div>
+
+                  {/* Color swatches */}
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    {[
+                      selectedCar.body,
+                      selectedCar.neon,
+                      selectedCar.canopy,
+                      selectedCar.flameA,
+                      selectedCar.flameB,
+                    ].map((col, i) => (
+                      <span
+                        key={i}
+                        className="inline-block w-3 h-3 rounded-sm"
+                        style={{
+                          background: col,
+                          boxShadow: `0 0 6px ${col}`,
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Stat bars */}
+                  <div className="grid grid-cols-3 gap-2 mt-2 text-[10px]">
+                    {[
+                      { label: "SPD", val: selectedCar.speedMul, color: "#ff5722" },
+                      { label: "ACC", val: selectedCar.accelMul, color: "#7ff7ff" },
+                      { label: "GRIP", val: selectedCar.gripMul, color: "#39ff14" },
+                    ].map((s) => {
+                      // map ~0.9..1.15 to 0..1
+                      const pct = Math.max(
+                        0,
+                        Math.min(1, (s.val - 0.9) / 0.25),
+                      );
+                      return (
+                        <div key={s.label}>
+                          <div className="flex justify-between opacity-80 mb-0.5">
+                            <span style={{ color: s.color }}>{s.label}</span>
+                            <span className="opacity-70">
+                              {s.val.toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${pct * 100}%`,
+                                background: s.color,
+                                boxShadow: `0 0 6px ${s.color}`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={goNextCar}
+                  className="px-3 py-2 rounded-md font-bold pointer-events-auto"
+                  style={{
+                    color: selectedCar.neon,
+                    background: "rgba(0,0,0,0.35)",
+                    border: `1px solid ${selectedCar.neon}55`,
+                    textShadow: `0 0 6px ${selectedCar.neon}`,
+                  }}
+                  aria-label="Next car"
+                >
+                  ▶
+                </button>
+              </div>
+
+              {/* Car dot strip */}
+              <div className="flex items-center justify-center gap-1.5 mt-2 flex-wrap">
+                {CARS.map((c, i) => {
+                  const active = c.id === selectedCar.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => onSelectCar(c.id)}
+                      className="pointer-events-auto rounded-full transition-all"
+                      title={c.name}
+                      style={{
+                        width: active ? 12 : 8,
+                        height: active ? 12 : 8,
+                        background: c.neon,
+                        boxShadow: active
+                          ? `0 0 8px ${c.neon}, 0 0 14px ${c.neon}`
+                          : `0 0 4px ${c.neon}88`,
+                        opacity: active ? 1 : 0.55,
+                        border: active
+                          ? `1px solid ${c.canopy}`
+                          : "1px solid transparent",
+                      }}
+                      aria-label={`Select ${c.name} (car ${i + 1})`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
             <button className="menu-btn mt-6" onClick={onStart}>
               ▶ Start Race
             </button>
@@ -3417,6 +3838,16 @@ export default function Game() {
   const [state, setState] = useState<GameState>("menu");
   const [muted, setMutedState] = useState(false);
   const [mode, setMode] = useState<GameMode>("medium");
+  const [carId, setCarId] = useState<string>(() => {
+    try {
+      const v = localStorage.getItem("lucidex.car");
+      if (v && CARS_BY_ID[v]) return v;
+    } catch {
+      /* noop */
+    }
+    return CARS[0].id;
+  });
+  const selectedCar = CARS_BY_ID[carId] ?? CARS[0];
 
   // Shared refs (mutable, no React re-renders)
   const inputRef = useRef<InputState>({ steer: 0, drift: false, nitro: false });
@@ -3430,7 +3861,22 @@ export default function Game() {
   const topSpeedRef = useRef(0);
   const nitroPrevRef = useRef(false);
   const modeRef = useRef<ModeConfig>(MODE_CONFIGS.medium);
+  const carRef = useRef<Car>(selectedCar);
   const driftScoreRef = useRef(0);
+
+  // Keep carRef live with the latest selection (used by GameLogic for stats)
+  useEffect(() => {
+    carRef.current = selectedCar;
+    try {
+      localStorage.setItem("lucidex.car", selectedCar.id);
+    } catch {
+      /* noop */
+    }
+  }, [selectedCar]);
+
+  const onSelectCar = useCallback((id: string) => {
+    if (CARS_BY_ID[id]) setCarId(id);
+  }, []);
   // Power-up + combo state refs
   const shieldRef = useRef(0);
   const multiplierTimerRef = useRef(0);
@@ -3618,13 +4064,15 @@ export default function Game() {
   const startRace = useCallback(() => {
     const cfg = MODE_CONFIGS[mode];
     modeRef.current = cfg;
-    speedRef.current = BASE_SPEED * cfg.baseSpeedMul;
+    carRef.current = selectedCar;
+    const startSpeed = BASE_SPEED * cfg.baseSpeedMul * selectedCar.speedMul;
+    speedRef.current = startSpeed;
     distanceRef.current = 0;
     nitroRef.current = 100;
     driftAngleRef.current = 0;
     carXRef.current = 0;
     crashedRef.current = false;
-    topSpeedRef.current = BASE_SPEED * cfg.baseSpeedMul;
+    topSpeedRef.current = startSpeed;
     driftScoreRef.current = 0;
     // Reset all power-up + combo state on each race
     shieldRef.current = 0;
@@ -3637,7 +4085,7 @@ export default function Game() {
     audioRef.current?.resume();
     audioRef.current?.triggerStart();
     setState("playing");
-  }, [audioRef, mode]);
+  }, [audioRef, mode, selectedCar]);
 
   const restart = useCallback(() => {
     startRace();
@@ -3733,6 +4181,7 @@ export default function Game() {
     carXRef,
     crashedRef,
     modeRef,
+    carRef,
     driftScoreRef,
     shieldRef,
     multiplierTimerRef,
@@ -3759,7 +4208,7 @@ export default function Game() {
         frameloop={state === "playing" ? "always" : "demand"}
       >
         <Suspense fallback={null}>
-          <Scene refs={refs} />
+          <Scene refs={refs} car={selectedCar} />
         </Suspense>
       </Canvas>
 
@@ -3787,6 +4236,11 @@ export default function Game() {
         onSelectMode={(m) => {
           audioRef.current?.triggerClick();
           setMode(m);
+        }}
+        carId={carId}
+        onSelectCar={(id) => {
+          audioRef.current?.triggerClick();
+          onSelectCar(id);
         }}
       />
     </div>
