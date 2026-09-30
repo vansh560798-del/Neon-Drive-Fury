@@ -3697,6 +3697,16 @@ const HUD = ({
         </div>
       )}
 
+      {/* A cockpit reticle makes the road's vanishing point easier to read at speed. */}
+      {state === "playing" && (
+        <div className="speed-reticle" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
+
       {/* Pickup flash text — appears briefly above the combo */}
       {state === "playing" && (
         <div
@@ -4141,9 +4151,9 @@ const HUD = ({
                 <div className="neon-cyan font-bold tracking-widest mb-2">
                   KEYBOARD
                 </div>
-                <div>← → · Steer</div>
-                <div>SHIFT · Drift</div>
-                <div>SPACE · Nitro</div>
+                <div>← → / A D · Steer</div>
+                <div>SHIFT / S · Drift</div>
+                <div>SPACE / W · Nitro</div>
               </div>
               <div className="glass rounded-lg p-3 text-left">
                 <div className="neon-pink font-bold tracking-widest mb-2">
@@ -4445,7 +4455,8 @@ export default function Game() {
     });
   }, []);
 
-  // Keyboard input
+  // Keyboard input. Tracking held keys prevents a released key from cancelling
+  // another control that is still held, and avoids "stuck" steering after alt-tab.
   useEffect(() => {
     const setSteer = () => {
       const left = keysRef.current.has("ArrowLeft") || keysRef.current.has("KeyA");
@@ -4456,10 +4467,16 @@ export default function Game() {
     const onDown = (e: KeyboardEvent) => {
       const code = e.code;
       keysRef.current.add(code);
-      if (code === "ShiftLeft" || code === "ShiftRight") inputRef.current.drift = true;
-      if (code === "Space") {
+      const isControl = [
+        "ArrowLeft", "ArrowRight", "KeyA", "KeyD", "KeyW", "KeyS",
+        "ShiftLeft", "ShiftRight", "Space",
+      ].includes(code);
+      if (isControl) e.preventDefault();
+      if (code === "ShiftLeft" || code === "ShiftRight" || code === "KeyS") {
+        inputRef.current.drift = true;
+      }
+      if (code === "Space" || code === "KeyW") {
         inputRef.current.nitro = true;
-        e.preventDefault();
       }
       if ((code === "Enter" || code === "Space") && state === "menu") {
         e.preventDefault();
@@ -4471,15 +4488,34 @@ export default function Game() {
     const onUp = (e: KeyboardEvent) => {
       const code = e.code;
       keysRef.current.delete(code);
-      if (code === "ShiftLeft" || code === "ShiftRight") inputRef.current.drift = false;
-      if (code === "Space") inputRef.current.nitro = false;
+      if (code === "ShiftLeft" || code === "ShiftRight" || code === "KeyS") {
+        inputRef.current.drift =
+          keysRef.current.has("ShiftLeft") ||
+          keysRef.current.has("ShiftRight") ||
+          keysRef.current.has("KeyS");
+      }
+      if (code === "Space" || code === "KeyW") {
+        inputRef.current.nitro =
+          keysRef.current.has("Space") || keysRef.current.has("KeyW");
+      }
       setSteer();
+    };
+    const clearInput = () => {
+      keysRef.current.clear();
+      inputRef.current = { steer: 0, drift: false, nitro: false };
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) clearInput();
     };
     window.addEventListener("keydown", onDown, { passive: false });
     window.addEventListener("keyup", onUp);
+    window.addEventListener("blur", clearInput);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.removeEventListener("keydown", onDown);
       window.removeEventListener("keyup", onUp);
+      window.removeEventListener("blur", clearInput);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);

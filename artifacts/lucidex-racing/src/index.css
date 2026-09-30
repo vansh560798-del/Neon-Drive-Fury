@@ -149,6 +149,44 @@ canvas {
   z-index: 6;
 }
 
+/* Four animated corner brackets add a subtle HUD/cockpit graphic without
+   obscuring the road or competing with the WebGL speed-line effects. */
+.speed-reticle {
+  position: absolute;
+  left: 50%;
+  top: 54%;
+  width: clamp(86px, 13vw, 150px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 8;
+  opacity: 0.64;
+  filter: drop-shadow(0 0 7px rgba(0, 246, 255, 0.9));
+  animation: reticle-breathe 2.4s ease-in-out infinite;
+}
+
+.speed-reticle span {
+  position: absolute;
+  width: 22%;
+  height: 22%;
+  border-color: rgba(0, 246, 255, 0.9);
+  border-style: solid;
+}
+
+.speed-reticle span:nth-child(1) { left: 0; top: 0; border-width: 2px 0 0 2px; }
+.speed-reticle span:nth-child(2) { right: 0; top: 0; border-width: 2px 2px 0 0; }
+.speed-reticle span:nth-child(3) { left: 0; bottom: 0; border-width: 0 0 2px 2px; }
+.speed-reticle span:nth-child(4) { right: 0; bottom: 0; border-width: 0 2px 2px 0; }
+
+@keyframes reticle-breathe {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.94); opacity: 0.45; }
+  50% { transform: translate(-50%, -50%) scale(1.04); opacity: 0.8; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .speed-reticle { animation: none; }
+}
+
 .title-glow {
   background: linear-gradient(90deg, #00f6ff, #ff2bd1, #9b30ff, #00f6ff);
   background-size: 300% 100%;
